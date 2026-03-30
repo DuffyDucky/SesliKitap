@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "Voice Book",
+    "slug": "SesliKitap",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+    "plugins": [
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "SesliKitap sesli komutlarınızı anlamak için mikrofona erişim istiyor.",
+          "speechRecognitionPermission": "SesliKitap sesli komutlarınızı anlamak için konuşma tanıma istiyor."
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "SesliKitap sesli komutlarınızı anlamak için konuşma tanıma istiyor.",
+        "NSMicrophoneUsageDescription": "SesliKitap sesli komutlarınızı anlamak için mikrofona erişim istiyor."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.anonymous.SesliKitap"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

@@ -1,0 +1,210 @@
+============================================================
+  SesliKitap v2 — Optimizasyon Planı
+============================================================
+
+DURUM: Önceki turda P0 buglar (çevrimdışı okuma, kırık importlar,
+memory leak, debounce) ve P1/P2 iyileştirmeler (TTS feedback, yardım
+komutu, font/touch, kod temizliği) tamamlandı. Aşağıdaki yeni
+sorunlar kapsamlı kod analizi ile tespit edildi.
+
+============================================================
+  FAZ 1 — P0: KRİTİK BUGLAR
+============================================================
+
+[ ] P0-1: Sayfa bölme tutarsızlığını gider
+    Dosya: src/screens/ReaderScreen.tsx
+    Sorun: ReaderScreen'de naif 2000-char sabit bölme var.
+           useOfflineBooks.ts'de akıllı paragraf/cümle/kelime bölme var.
+           Online kitaplar aptal bölücüyü, offline kitaplar akıllısını kullanıyor.
+    Çözüm: ReaderScreen'deki lokal splitIntoPages ve CHARS_PER_PAGE
+           sabitini sil, useOfflineBooks'tan import et.
+
+[ ] P0-2: Swipe ile sayfa değişiminde lastPage kaydedilmiyor
+    Dosya: src/screens/ReaderScreen.tsx
+    Sorun: swipeHandler setCurrentPage çağırıyor ama updateLastPage
+           çağırmıyor. Uygulama yeniden başlatılınca konum kaybolur.
+    Çözüm: Swipe handler'a updateLastPage(bookId, newPage) çağrısı ekle.
+
+[ ] P0-3: TTS auto-advance'de lastPage kaydedilmiyor
+    Dosya: src/screens/ReaderScreen.tsx
+    Sorun: readFromWord otomatik sayfa geçişinde updateLastPage yok.
+    Çözüm: Auto-advance sonrası updateLastPage(bookId, currentPage + 1)
+           ekle. bookId'yi dependency array'e ekle.
+
+[ ] P0-4: Gemini JSON parse güvenliği
+    Dosya: src/utils/geminiService.ts
+    Sorun: JSON.parse(jsonStr) — genel try-catch'te yakalanır ama
+           conversation history tutarsız kalır ve kullanıcı yanıt alamaz.
+    Çözüm: İç try-catch ile sarma. Parse başarısız olursa regex ile
+           speech alanını çıkarmayı dene. Bulunamazsa ham metni oku.
+
+[ ] P0-5: Voice loading race condition
+    Dosya: src/utils/tts.ts
+    Sorun: loadBestVoice() modül yüklenirken await'siz çağrılıyor.
+           İki eşzamanlı çağrı voicesLoaded kontrolünü geçip ikisi de
+           voice listesi çekebilir.
+    Çözüm: voicesLoaded boolean yerine loadPromise: Promise<void> | null
+           kullan. İlk çağrı promise oluşturur, sonrakiler bekler.
+
+[ ] P0-6: Sayfa cache'i sınırsız büyüyor
+    Dosya: src/hooks/useOfflineBooks.ts
+    Sorun: pageCache Map'i asla temizlenmiyor (deleteBook hariç).
+           100 kitap = devasa bellek kullanımı.
+    Çözüm: MAX_CACHED_BOOKS = 3 sabiti ekle. Yeni giriş eklerken
+           en eski girişi sil (LRU).
+
+============================================================
+  FAZ 2 — P1: HATA YÖNETİMİ VE UX
+============================================================
+
+[ ] P1-1: Tüm API çağrılarına timeout ekle
+    Yeni dosya: src/utils/fetchWithTimeout.ts
+    Değişecek: gutenbergAPI.ts, wikisourceAPI.ts, geminiService.ts
+    Çözüm: AbortController ile fetchWithTimeout(url, options, timeoutMs)
+           fonksiyonu yaz. Gutenberg/Wikisource: 10s, Gemini: 15s.
+           Timeout hatası kullanıcıya sesli bildirilir.
+
+[ ] P1-2: TTS hatalarını yutmayı bırak
+    Dosya: src/utils/tts.ts
+    Sorun: onError: () => resolve() — TTS çökerse kullanıcı habersiz.
+    Çözüm: Hata logla. speak() için reject et. speakBook() için
+           konsola yaz ama resolve et (okuma akışını bozmamak için).
+
+[ ] P1-3: bookStorage JSON.parse koruması
+    Dosya: src/store/bookStorage.ts
+    Sorun: AsyncStorage verisi bozuksa JSON.parse çöker.
+    Çözüm: getBooks()'ta try-catch. Parse hatasında boş dizi dön,
+           bozuk veriyi temizle.
+
+[ ] P1-4: Kitap silmeden önce onay iste
+    Dosya: src/screens/LibraryScreen.tsx
+    Sorun: Tek dokunuşla kalıcı silme — kör kullanıcı için tehlikeli.
+    Çözüm: Alert.alert() ile onay diyaloğu. Diyalog öncesi TTS ile
+           "silinecek, emin misiniz?" sor.
+
+[ ] P1-5: Wikisource markup temizliğini iyileştir
+    Dosya: src/utils/wikisourceAPI.ts
+    Sorun: İç içe {{}} ve [[]] düzgün temizlenmiyor.
+    Çözüm: İteratif while döngüsü ile en içtekinden dışa doğru temizle.
+           <ref>, [[Kategori:]], __TOC__ gibi öğeleri de temizle.
+
+[ ] P1-6: Okuma ilerleme bildirimi
+    Dosyalar: tts.ts, ReaderScreen.tsx, geminiService.ts
+    Çözüm: announce.progress(current, total) fonksiyonu ekle.
+           Gemini'ye "neredeyim" -> progress aksiyonu ekle.
+           Sayfa bilgi alanına dokunulduğunda da tetikle.
+
+[ ] P1-7: Uyku zamanlayıcısı
+    Dosyalar: ReaderScreen.tsx, tts.ts, geminiService.ts
+    Çözüm: "uyku zamanlayıcı X dakika" komutu -> set_timer aksiyonu.
+           setTimeout ile pauseReading tetikle. Unmount'ta timer temizle.
+
+[ ] P1-8: Okuma hızı kalıcılığı
+    Dosyalar: tts.ts, bookStorage.ts
+    Çözüm: AsyncStorage'da @seslikitap_speed key'i ile hızı kaydet.
+           Uygulama başlangıcında oku.
+
+[ ] P1-9: Yer imi desteği
+    Dosyalar: bookStorage.ts, ReaderScreen.tsx, geminiService.ts, tts.ts
+    Çözüm: BookMetadata'ya bookmarks?: number[] ekle.
+           "yer imi ekle" / "yer imlerim" / "yer imine git" komutları.
+
+============================================================
+  FAZ 3 — P2: PERFORMANS VE KOD KALİTESİ
+============================================================
+
+[ ] P2-1: Gemini system prompt optimizasyonu
+    Dosya: geminiService.ts
+    Çözüm: Örnek bölümünü kısalt (~1000 token -> ~400 token).
+           appContext'i system prompt yerine ilk user mesajı olarak gönder.
+
+[ ] P2-2: Arama sonuçları cache'i
+    Dosyalar: gutenbergAPI.ts, wikisourceAPI.ts
+    Çözüm: In-memory cache + 5 dakika TTL. Max 20 giriş.
+
+[ ] P2-3: Ağ bağlantı kontrolü
+    Yeni dosya: src/utils/network.ts
+    Çözüm: Hafif HEAD isteği ile bağlantı kontrolü.
+           Offline ise API çağrısı yapmadan sesli bildir.
+
+[ ] P2-4: Error boundary
+    Yeni dosya: src/components/ErrorBoundary.tsx
+    Değişecek: App.tsx
+    Çözüm: React class component ile yakalama. Siyah ekran +
+           "dokunarak yeniden başlat" + TTS bildirimi.
+
+[ ] P2-5: Conversation history optimizasyonu
+    Dosya: geminiService.ts
+    Sorun: setConversationContext() her çağrıda 2 mesaj ekliyor,
+           history şişiyor.
+    Çözüm: Context'i ayrı değişkende tut, system prompt'a ekle.
+           History'ye sahte mesaj ekleme.
+
+[ ] P2-6: Gemini model URL'i konfigüre edilebilir yap
+    Dosya: geminiService.ts
+    Çözüm: EXPO_PUBLIC_GEMINI_MODEL env variable ile model adını
+           ayarlanabilir yap.
+
+============================================================
+  UYGULAMA SIRASI (ÖZET TABLO)
+============================================================
+
+Faz  Görev                        Etki                 Dosyalar
+---- ---------------------------- -------------------- -----------------------
+ 1   P0-1 Sayfa bölme birleştir   Tutarlı okuma        ReaderScreen, useOfflineBooks
+ 1   P0-2 Swipe persist           Konum kaybı önleme   ReaderScreen
+ 1   P0-3 Auto-advance persist    Konum kaybı önleme   ReaderScreen
+ 1   P0-4 JSON parse guard        Crash önleme         geminiService
+ 1   P0-5 Voice race fix          Ses kararlılığı      tts.ts
+ 1   P0-6 Cache eviction          Bellek kontrolü      useOfflineBooks
+ 2   P1-1 Fetch timeout           Donma önleme         Yeni dosya + 3 API
+ 2   P1-2 TTS hata yönetimi       Hata görünürlüğü     tts.ts
+ 2   P1-3 Storage koruma          Crash önleme         bookStorage
+ 2   P1-4 Silme onayı             Veri güvenliği       LibraryScreen
+ 2   P1-5 Wiki temizliği          Okuma kalitesi       wikisourceAPI
+ 2   P1-6 İlerleme bildirimi      Erişilebilirlik      3 dosya
+ 2   P1-7 Uyku zamanlayıcı        UX                   3 dosya
+ 2   P1-8 Hız kalıcılığı          UX                   tts, bookStorage
+ 2   P1-9 Yer imleri              Özellik              4 dosya
+ 3   P2-1 Prompt optimize         Maliyet/hız          geminiService
+ 3   P2-2 Arama cache             Performans           2 API dosyası
+ 3   P2-3 Ağ kontrolü             UX                   Yeni dosya + ekranlar
+ 3   P2-4 Error boundary          Kararlılık           Yeni dosya + App.tsx
+ 3   P2-5 History optimize        Token tasarrufu      geminiService
+ 3   P2-6 Model config            Esneklik             geminiService
+
+============================================================
+  DOĞRULAMA
+============================================================
+
+- npx expo export ile build test
+- Online kitap aç -> akıllı sayfa bölme doğrula (kelime ortasında kesme yok)
+- Swipe ile sayfa değiştir -> uygulamayı kapat -> aynı sayfada devam ettiğini doğrula
+- Gemini'ye bozuk JSON döndürmesini tetikle -> crash yok, speech alanı okunuyor
+- İlk speak() çağrısı -> doğru Türkçe ses seçili
+- 5+ kitap aç -> bellek kullanımı sabit kalıyor (3 cache)
+- Timeout: Wi-Fi kapat -> 10-15s sonra "bağlantı zaman aşımı" TTS gelir
+- "Neredeyim" komutu -> "Sayfa X, toplam Y, yüzde Z" okunur
+- "Uyku zamanlayıcı 5 dakika" -> 5dk sonra okuma durur
+- Kitap sil -> onay diyaloğu çıkar
+- Wikisource kitap -> temiz metin, {{ artığı yok
+
+============================================================
+  DEĞİŞTİRİLECEK DOSYALAR
+============================================================
+
+Mevcut dosyalar:
+- src/screens/ReaderScreen.tsx      — P0-1, P0-2, P0-3, P1-6, P1-7, P1-9
+- src/utils/geminiService.ts        — P0-4, P1-6, P1-7, P1-9, P2-1, P2-5, P2-6
+- src/utils/tts.ts                  — P0-5, P1-2, P1-6, P1-7, P1-8, P1-9
+- src/hooks/useOfflineBooks.ts      — P0-6
+- src/store/bookStorage.ts          — P1-3, P1-8, P1-9
+- src/screens/LibraryScreen.tsx     — P1-4
+- src/utils/gutenbergAPI.ts         — P1-1
+- src/utils/wikisourceAPI.ts        — P1-1, P1-5
+- App.tsx                           — P2-4
+
+Yeni dosyalar:
+- src/utils/fetchWithTimeout.ts     — P1-1
+- src/utils/network.ts              — P2-3
+- src/components/ErrorBoundary.tsx   — P2-4
