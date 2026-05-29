@@ -8,9 +8,11 @@
 import { BookSource, BookSearchResult } from './types';
 import { listBundledBooks } from './bundled';
 import { archiveSource } from './archive';
+import { gutenbergSource } from './gutenberg';
 
-// Tek aktif kaynak: archive.org (Türkçe tam metin).
-const SOURCES: BookSource[] = [archiveSource];
+// Kaynak sırası: önce archive.org (Türkçe tam metin), sonra Gutenberg
+// (İngilizce + ReaderScreen'de sayfa sayfa Türkçe çeviri).
+const SOURCES: BookSource[] = [archiveSource, gutenbergSource];
 
 function sourceByName(name: string): BookSource | undefined {
   return SOURCES.find((s) => s.name === name);
@@ -18,16 +20,19 @@ function sourceByName(name: string): BookSource | undefined {
 
 export async function searchBook(query: string): Promise<BookSearchResult[]> {
   console.log(`[searchBook] sorgu: "${query}"`);
+  // Tüm kaynaklardan sonuç topla (kaynak sırasına göre: archive önce).
+  // Böylece archive'da bulunmayan kitaplar Gutenberg adaylarına düşebilir.
+  const all: BookSearchResult[] = [];
   for (const source of SOURCES) {
     try {
       const hits = await source.search(query);
       console.log(`[searchBook] ${source.name}: ${hits.length} sonuç`);
-      if (hits.length > 0) return hits;
+      all.push(...hits);
     } catch (e) {
       console.warn(`[${source.name}] arama başarısız:`, e);
     }
   }
-  return [];
+  return all;
 }
 
 const MAX_TEXT_CACHE = 3;

@@ -16,6 +16,7 @@ import { useOfflineBooks, splitIntoPages } from '../hooks/useOfflineBooks';
 import { chat, setConversationContext } from '../utils/geminiService';
 import { fetchBookText } from '../sources';
 import { findMainTextStart } from '../utils/frontMatter';
+import { translateToTurkish } from '../utils/translator';
 import { speak, speakBook, stopSpeaking, adjustRate, getRate, announce } from '../utils/tts';
 import { getBook, updateLastPage, addBookmark, getBookmarks } from '../store/bookStorage';
 import { readAsStringAsync } from 'expo-file-system';
@@ -42,6 +43,10 @@ export default function ReaderScreen() {
   const [fullText, setFullText] = useState('');
   const [mainStart, setMainStart] = useState(0);
   const [includeFrontMatter, setIncludeFrontMatter] = useState(false);
+  const [pageText, setPageText] = useState('');
+  const [translating, setTranslating] = useState(false);
+  // Gutenberg kaynağı İngilizce metin döndürür → sayfa sayfa Türkçeye çevrilir.
+  const needsTranslation = bookId.startsWith('gutenberg:');
   const [currentPage, setCurrentPage] = useState(route.params.startPage ?? 1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -112,9 +117,26 @@ export default function ReaderScreen() {
     setPages(splitIntoPages(body));
   }, [fullText, mainStart, includeFrontMatter]);
 
-  const currentText = pages[currentPage - 1] ?? '';
+  const rawPage = pages[currentPage - 1] ?? '';
+  const currentText = needsTranslation ? pageText : rawPage;
   const totalPages = pages.length;
   const words = splitIntoWords(currentText);
+
+  // Gutenberg sayfası okunurken İngilizceden Türkçeye çevir (önbellekli, lazy).
+  useEffect(() => {
+    if (!needsTranslation) return;
+    let cancelled = false;
+    if (!rawPage) {
+      setPageText('');
+      return;
+    }
+    setTranslating(true);
+    translateToTurkish(rawPage)
+      .then((tr) => { if (!cancelled) setPageText(tr); })
+      .catch(() => { if (!cancelled) setPageText(rawPage); })
+      .finally(() => { if (!cancelled) setTranslating(false); });
+    return () => { cancelled = true; };
+  }, [rawPage, needsTranslation]);
 
   const goToPage = useCallback(
     async (page: number) => {
@@ -229,8 +251,12 @@ export default function ReaderScreen() {
   }, [clearHighlightTimers]);
 
   const resumeReading = useCallback(async () => {
+    if (needsTranslation && (translating || !pageText)) {
+      await speak('Sayfa çevriliyor, lütfen bekleyin.');
+      return;
+    }
     readFromWord(currentWordIndex);
-  }, [currentWordIndex, readFromWord]);
+  }, [currentWordIndex, readFromWord, needsTranslation, translating, pageText]);
 
   const handleVoiceResult = useCallback(
     async (text: string) => {
@@ -475,6 +501,14 @@ export default function ReaderScreen() {
         <View style={styles.thinkingBar}>
           <ActivityIndicator size="small" color="#4fc3f7" />
           <Text style={styles.thinkingText}>Gemini düşünüyor...</Text>
+        </View>
+      )}
+
+      {/* Çeviri göstergesi */}
+      {translating && !thinking && (
+        <View style={styles.thinkingBar}>
+          <ActivityIndicator size="small" color="#4fc3f7" />
+          <Text style={styles.thinkingText}>Çevriliyor...</Text>
         </View>
       )}
 
