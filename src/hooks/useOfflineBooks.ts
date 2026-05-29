@@ -79,7 +79,7 @@ interface UseOfflineBooksResult {
     id: string;
     title: string;
     author: string;
-    source: 'gutenberg' | 'wikisource';
+    source: string;
     sourceId: string | number;
     textUrl: string;
   }) => Promise<void>;
@@ -109,7 +109,7 @@ export function useOfflineBooks(): UseOfflineBooksResult {
       id: string;
       title: string;
       author: string;
-      source: 'gutenberg' | 'wikisource';
+      source: string;
       sourceId: string | number;
       textUrl: string;
     }) => {

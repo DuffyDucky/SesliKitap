@@ -7,7 +7,7 @@ export interface BookMetadata {
   id: string;
   title: string;
   author: string;
-  source: 'gutenberg' | 'wikisource';
+  source: string;
   sourceId: string | number;
   downloadedAt: string;
   localPath: string;

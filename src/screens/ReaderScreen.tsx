@@ -14,9 +14,8 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { useSpeech } from '../hooks/useSpeech';
 import { useOfflineBooks, splitIntoPages } from '../hooks/useOfflineBooks';
 import { chat, setConversationContext } from '../utils/geminiService';
+import { fetchBookText } from '../sources';
 import { speak, speakBook, stopSpeaking, adjustRate, getRate, announce } from '../utils/tts';
-import { fetchWikisourceText } from '../utils/wikisourceAPI';
-import { fetchWithTimeout } from '../utils/fetchWithTimeout';
 import { getBook, updateLastPage, addBookmark, getBookmarks } from '../store/bookStorage';
 import { readAsStringAsync } from 'expo-file-system';
 import { RootStackParamList } from '../../App';
@@ -36,7 +35,7 @@ function splitIntoSentences(text: string): string[] {
 export default function ReaderScreen() {
   const route = useRoute<ReaderRouteProp>();
   const navigation = useNavigation<ReaderNavProp>();
-  const { bookId, bookTitle, bookAuthor, textUrl, source, wikisourceTitle } = route.params;
+  const { bookId, bookTitle, bookAuthor } = route.params;
 
   const [pages, setPages] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(route.params.startPage ?? 1);
@@ -54,9 +53,9 @@ export default function ReaderScreen() {
   // Gemini'ye kitap context'i ver
   useEffect(() => {
     setConversationContext(
-      `Kullanıcı "${bookTitle}" (${bookAuthor}) kitabını okuyor. Kaynak: ${source}.`
+      `Kullanıcı "${bookTitle}" (${bookAuthor}) kitabını okuyor.`
     );
-  }, [bookTitle, bookAuthor, source]);
+  }, [bookTitle, bookAuthor]);
 
   // Load book text
   useEffect(() => {
@@ -78,14 +77,9 @@ export default function ReaderScreen() {
           }
         }
 
-        // Yerel dosya yoksa internetten çek
+        // Yerel dosya yoksa archive.org'dan çek (HomeScreen cache'lediyse anında gelir)
         if (!text) {
-          if (textUrl) {
-            const res = await fetchWithTimeout(textUrl, {}, 15000);
-            text = await res.text();
-          } else if (source === 'wikisource' && wikisourceTitle) {
-            text = await fetchWikisourceText(wikisourceTitle);
-          }
+          text = await fetchBookText(bookId);
         }
 
         if (!cancelled) {
@@ -103,7 +97,7 @@ export default function ReaderScreen() {
     return () => {
       cancelled = true;
     };
-  }, [bookId, textUrl, source, wikisourceTitle, bookTitle]);
+  }, [bookId, bookTitle]);
 
   const currentText = pages[currentPage - 1] ?? '';
   const totalPages = pages.length;

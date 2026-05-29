@@ -13,10 +13,6 @@ export type RootStackParamList = {
     bookId: string;
     bookTitle: string;
     bookAuthor: string;
-    textUrl: string | null;
-    source: 'gutenberg' | 'wikisource';
-    sourceId: string | number;
-    wikisourceTitle?: string;
     startPage?: number;
   };
   Library: undefined;

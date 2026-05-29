@@ -57,10 +57,6 @@ export default function LibraryScreen() {
         bookId: book.id,
         bookTitle: book.title,
         bookAuthor: book.author,
-        textUrl: null,
-        source: book.source,
-        sourceId: book.sourceId,
-        wikisourceTitle: book.source === 'wikisource' ? book.title : undefined,
         startPage: book.lastPage,
       });
     },

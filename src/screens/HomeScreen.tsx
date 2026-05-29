@@ -13,8 +13,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { useSpeech } from '../hooks/useSpeech';
 import { chat, clearConversation } from '../utils/geminiService';
 import { speak, announce, stopSpeaking } from '../utils/tts';
-import { searchBooks, getTextUrl, getAuthorName } from '../utils/gutenbergAPI';
-import { searchWikisource } from '../utils/wikisourceAPI';
+import { searchBook, fetchBookText } from '../sources';
 import { RootStackParamList } from '../../App';
 
 const { height } = Dimensions.get('window');
@@ -35,50 +34,37 @@ export default function HomeScreen() {
     async (bookName: string) => {
       await speak(`${bookName} aranıyor.`);
 
-      // 1) Önce Wikisource'da ara (hızlı ve Türkçe içerik)
+      let results;
       try {
-        const wikiResults = await searchWikisource(bookName);
-        if (wikiResults.length > 0) {
-          const wikiBook = wikiResults[0];
-          await speak(`${wikiBook.title} bulundu, açılıyor.`);
+        results = await searchBook(bookName);
+      } catch (e) {
+        console.warn('Arama hatası:', e);
+        await announce.apiError();
+        return;
+      }
+
+      if (!results || results.length === 0) {
+        await speak('Bu kitap bulunamadı, farklı bir isimle tekrar deneyin.');
+        return;
+      }
+
+      // Kalite kapısından geçen ilk adayı bul (fetchBookText cache'i de doldurur).
+      for (const hit of results) {
+        try {
+          await fetchBookText(hit.id);
+          await speak(`${hit.title} bulundu, açılıyor.`);
           navigation.navigate('Reader', {
-            bookId: String(wikiBook.pageid),
-            bookTitle: wikiBook.title,
-            bookAuthor: 'Bilinmiyor',
-            textUrl: null,
-            source: 'wikisource',
-            sourceId: wikiBook.pageid,
-            wikisourceTitle: wikiBook.title,
+            bookId: hit.id,
+            bookTitle: hit.title,
+            bookAuthor: hit.author,
           });
           return;
+        } catch (e) {
+          console.warn(`[${hit.id}] atlandı:`, e);
         }
-      } catch (e) {
-        console.warn('Wikisource hatası:', e);
       }
 
-      // 2) Wikisource'da bulunamazsa Gutenberg'de ara
-      try {
-        const results = await searchBooks(bookName);
-        for (const book of results) {
-          const textUrl = getTextUrl(book);
-          if (textUrl) {
-            await speak(`${book.title} bulundu, açılıyor.`);
-            navigation.navigate('Reader', {
-              bookId: String(book.id),
-              bookTitle: book.title,
-              bookAuthor: getAuthorName(book),
-              textUrl,
-              source: 'gutenberg',
-              sourceId: book.id,
-            });
-            return;
-          }
-        }
-      } catch (e) {
-        console.warn('Gutenberg hatası:', e);
-      }
-
-      await speak('Bu kitap bulunamadı, farklı bir isimle tekrar deneyin.');
+      await speak('Uygun metin bulunamadı, farklı bir isimle tekrar deneyin.');
     },
     [navigation]
   );
