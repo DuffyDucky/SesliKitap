@@ -133,6 +133,9 @@ export async function chat(
 
     if (!res.ok) {
       conversationHistory.pop();
+      if (res.status === 429) {
+        return { action: 'none', speech: 'Günlük komut sınırına ulaşıldı. Yarın tekrar deneyebilirsiniz.' };
+      }
       return { action: 'none', speech: 'Şu an bağlanamıyorum, biraz sonra tekrar deneyin.' };
     }
 
