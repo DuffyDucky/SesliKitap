@@ -5,30 +5,22 @@ import {
   StyleSheet,
   TouchableOpacity,
   Pressable,
-  ScrollView,
   PanResponder,
   ActivityIndicator,
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { useSpeech } from '../hooks/useSpeech';
 import { useOfflineBooks, splitIntoPages } from '../hooks/useOfflineBooks';
-import { chat, setConversationContext } from '../utils/geminiService';
-import { parseLocalIntent } from '../utils/localIntent';
 import { fetchBookText } from '../sources';
 import { findMainTextStart } from '../utils/frontMatter';
 import { translateToTurkish } from '../utils/translator';
-import { speak, speakBook, stopSpeaking, adjustRate, getRate, announce } from '../utils/tts';
-import { getBook, updateLastPage, addBookmark, getBookmarks } from '../store/bookStorage';
+import { speakBook, stopSpeaking, getRate, speak, announce } from '../utils/tts';
+import { getBook, updateLastPage } from '../store/bookStorage';
 import { readAsStringAsync } from 'expo-file-system';
 import { RootStackParamList } from '../../App';
 
 type ReaderRouteProp = RouteProp<RootStackParamList, 'Reader'>;
 type ReaderNavProp = StackNavigationProp<RootStackParamList, 'Reader'>;
-
-function splitIntoWords(text: string): string[] {
-  return text.split(/\s+/).filter((w) => w.length > 0);
-}
 
 function splitIntoSentences(text: string): string[] {
   const parts = text.split(/(?<=[.!?…;:\n])\s+/);
@@ -38,36 +30,25 @@ function splitIntoSentences(text: string): string[] {
 export default function ReaderScreen() {
   const route = useRoute<ReaderRouteProp>();
   const navigation = useNavigation<ReaderNavProp>();
-  const { bookId, bookTitle, bookAuthor } = route.params;
+  const { bookId, bookTitle } = route.params;
 
   const [pages, setPages] = useState<string[]>([]);
   const [fullText, setFullText] = useState('');
   const [mainStart, setMainStart] = useState(0);
-  const [includeFrontMatter, setIncludeFrontMatter] = useState(false);
+  const [includeFrontMatter] = useState(false);
   const [pageText, setPageText] = useState('');
   const [translating, setTranslating] = useState(false);
   // Gutenberg kaynağı İngilizce metin döndürür → sayfa sayfa Türkçeye çevrilir.
   const needsTranslation = bookId.startsWith('gutenberg:');
   const [currentPage, setCurrentPage] = useState(route.params.startPage ?? 1);
+  const [currentSentence, setCurrentSentence] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [currentWordIndex, setCurrentWordIndex] = useState(0);
-  const [thinking, setThinking] = useState(false);
   const lastTap = useRef(0);
   const isPlayingRef = useRef(false);
-  const scrollViewRef = useRef<ScrollView>(null);
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { downloadBook } = useOfflineBooks();
-
-  // Gemini'ye kitap context'i ver
-  useEffect(() => {
-    setConversationContext(
-      `Kullanıcı "${bookTitle}" (${bookAuthor}) kitabını okuyor.`
-    );
-  }, [bookTitle, bookAuthor]);
-
-  // Load book text
+  // Kitap metnini yükle
   useEffect(() => {
     let cancelled = false;
 
@@ -87,13 +68,12 @@ export default function ReaderScreen() {
           }
         }
 
-        // Yerel dosya yoksa archive.org'dan çek (HomeScreen cache'lediyse anında gelir)
+        // Yerel dosya yoksa kaynaktan çek (HomeScreen cache'lediyse anında gelir)
         if (!text) {
           text = await fetchBookText(bookId);
         }
 
         if (!cancelled) {
-          setIncludeFrontMatter(false);
           setMainStart(findMainTextStart(text));
           setFullText(text);
           await announce.bookOpened(bookTitle, 'birinci bölüm');
@@ -111,7 +91,7 @@ export default function ReaderScreen() {
     };
   }, [bookId, bookTitle]);
 
-  // Ham metin / ön bilgi tercihine göre sayfaları türet.
+  // Ham metin / ön bilgi tercihine göre sayfaları türet (varsayılan: asıl metinden).
   useEffect(() => {
     if (!fullText) return;
     const body = includeFrontMatter ? fullText : fullText.slice(mainStart);
@@ -121,7 +101,6 @@ export default function ReaderScreen() {
   const rawPage = pages[currentPage - 1] ?? '';
   const currentText = needsTranslation ? pageText : rawPage;
   const totalPages = pages.length;
-  const words = splitIntoWords(currentText);
 
   // Gutenberg sayfası okunurken İngilizceden Türkçeye çevir (önbellekli, lazy).
   useEffect(() => {
@@ -139,6 +118,59 @@ export default function ReaderScreen() {
     return () => { cancelled = true; };
   }, [rawPage, needsTranslation]);
 
+  // Sayfa değişince cümle imlecini sıfırla
+  useEffect(() => {
+    setCurrentSentence(0);
+  }, [currentPage]);
+
+  // Unmount: TTS ve zamanlayıcı temizliği
+  useEffect(() => {
+    return () => {
+      isPlayingRef.current = false;
+      stopSpeaking();
+      if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
+    };
+  }, []);
+
+  const pauseReading = useCallback(async () => {
+    isPlayingRef.current = false;
+    await stopSpeaking();
+    setIsPlaying(false);
+  }, []);
+
+  const readFromCurrent = useCallback(async () => {
+    if (needsTranslation && (translating || !pageText)) {
+      await speak('Sayfa çevriliyor, lütfen bekleyin.');
+      return;
+    }
+    if (!currentText) return;
+
+    isPlayingRef.current = true;
+    setIsPlaying(true);
+
+    const sentences = splitIntoSentences(currentText);
+    for (let s = currentSentence; s < sentences.length; s++) {
+      if (!isPlayingRef.current) break;
+      setCurrentSentence(s);
+      await speakBook(sentences[s], getRate());
+      if (!isPlayingRef.current) break;
+    }
+
+    if (isPlayingRef.current) {
+      isPlayingRef.current = false;
+      setIsPlaying(false);
+      if (currentPage < totalPages) {
+        const next = currentPage + 1;
+        setCurrentPage(next);
+        setCurrentSentence(0);
+        updateLastPage(bookId, next);
+        await announce.pageChanged(next);
+      } else {
+        await announce.bookEnded();
+      }
+    }
+  }, [currentText, currentSentence, currentPage, totalPages, bookId, needsTranslation, translating, pageText]);
+
   const goToPage = useCallback(
     async (page: number) => {
       const clamped = Math.max(1, Math.min(page, totalPages));
@@ -146,250 +178,14 @@ export default function ReaderScreen() {
       isPlayingRef.current = false;
       setIsPlaying(false);
       setCurrentPage(clamped);
-      setCurrentWordIndex(0);
+      setCurrentSentence(0);
       await updateLastPage(bookId, clamped);
       await announce.pageChanged(clamped);
     },
     [totalPages, bookId]
   );
 
-  const highlightTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-
-  const clearHighlightTimers = useCallback(() => {
-    highlightTimers.current.forEach(clearTimeout);
-    highlightTimers.current = [];
-  }, []);
-
-  // Unmount: timer ve TTS temizliği
-  useEffect(() => {
-    return () => {
-      clearHighlightTimers();
-      isPlayingRef.current = false;
-      stopSpeaking();
-      if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
-    };
-  }, [clearHighlightTimers]);
-
-  const readFromWord = useCallback(
-    async (startWordIndex: number) => {
-      isPlayingRef.current = true;
-      setIsPlaying(true);
-
-      const sentences = splitIntoSentences(currentText);
-
-      let globalWordIdx = 0;
-      let startSentenceIdx = 0;
-      let startWordInSentence = 0;
-
-      for (let s = 0; s < sentences.length; s++) {
-        const sentenceWords = sentences[s].split(/\s+/).filter((w) => w.length > 0);
-        if (globalWordIdx + sentenceWords.length > startWordIndex) {
-          startSentenceIdx = s;
-          startWordInSentence = startWordIndex - globalWordIdx;
-          break;
-        }
-        globalWordIdx += sentenceWords.length;
-      }
-
-      let currentGlobalWord = startWordIndex;
-      for (let s = startSentenceIdx; s < sentences.length; s++) {
-        if (!isPlayingRef.current) break;
-
-        const sentence = sentences[s];
-        const sentenceWords = sentence.split(/\s+/).filter((w) => w.length > 0);
-        const wordStartInSentence = s === startSentenceIdx ? startWordInSentence : 0;
-
-        const textToSpeak = s === startSentenceIdx && startWordInSentence > 0
-          ? sentenceWords.slice(startWordInSentence).join(' ')
-          : sentence;
-
-        const rate = getRate();
-        const wordsToRead = sentenceWords.length - wordStartInSentence;
-        const duration = (wordsToRead * 350) / rate;
-        const perWord = duration / wordsToRead;
-
-        clearHighlightTimers();
-        for (let w = 0; w < wordsToRead; w++) {
-          const wordGlobalIdx = currentGlobalWord + w;
-          const timer = setTimeout(() => {
-            if (isPlayingRef.current) {
-              setCurrentWordIndex(wordGlobalIdx);
-            }
-          }, w * perWord);
-          highlightTimers.current.push(timer);
-        }
-
-        setCurrentWordIndex(currentGlobalWord);
-        await speakBook(textToSpeak, rate);
-        clearHighlightTimers();
-
-        if (!isPlayingRef.current) break;
-        currentGlobalWord += wordsToRead;
-      }
-
-      if (isPlayingRef.current) {
-        isPlayingRef.current = false;
-        setIsPlaying(false);
-        if (currentPage < totalPages) {
-          const nextPage = currentPage + 1;
-          setCurrentPage(nextPage);
-          setCurrentWordIndex(0);
-          updateLastPage(bookId, nextPage);
-          await announce.pageChanged(nextPage);
-        } else {
-          await announce.bookEnded();
-        }
-      }
-    },
-    [currentText, currentPage, totalPages, clearHighlightTimers, bookId]
-  );
-
-  const pauseReading = useCallback(async () => {
-    isPlayingRef.current = false;
-    clearHighlightTimers();
-    await stopSpeaking();
-    setIsPlaying(false);
-  }, [clearHighlightTimers]);
-
-  const resumeReading = useCallback(async () => {
-    if (needsTranslation && (translating || !pageText)) {
-      await speak('Sayfa çevriliyor, lütfen bekleyin.');
-      return;
-    }
-    readFromWord(currentWordIndex);
-  }, [currentWordIndex, readFromWord, needsTranslation, translating, pageText]);
-
-  const handleVoiceResult = useCallback(
-    async (text: string) => {
-      setThinking(true);
-
-      // Okuma sırasında önce duraklat
-      const wasPlaying = isPlayingRef.current;
-      if (wasPlaying) {
-        await pauseReading();
-      }
-
-      try {
-        const appContext = `Kullanıcı "${bookTitle}" kitabını okuyor. Sayfa ${currentPage}/${totalPages}. ${isPlaying ? 'Şu an okunuyor.' : 'Duraklatılmış.'} Yazar: ${bookAuthor}.`;
-
-        // Komutu önce yerel ayrıştırıcıyla çöz (Gemini kotası gerekmez).
-        // Sadece tanınmayan/sohbet türü ifadelerde Gemini'ye düş.
-        let response = parseLocalIntent(text);
-        if (response.action === 'unknown') {
-          response = await chat(text, appContext);
-        }
-
-        // Yanıtı sesli söyle
-        await speak(response.speech);
-
-        // Sonra aksiyonu uygula
-        switch (response.action) {
-          case 'pause':
-            // Zaten duraklattık
-            break;
-          case 'resume':
-          case 'play':
-            resumeReading();
-            break;
-          case 'go_to_page':
-            if (response.page) await goToPage(response.page);
-            break;
-          case 'go_to_start':
-            await goToPage(1);
-            break;
-          case 'set_speed_up': {
-            const newRate = adjustRate(0.25);
-            await announce.speedChanged(newRate);
-            break;
-          }
-          case 'set_speed_down': {
-            const newRate = adjustRate(-0.25);
-            await announce.speedChanged(newRate);
-            break;
-          }
-          case 'next_chapter':
-            await goToPage(currentPage + 1);
-            break;
-          case 'prev_chapter':
-            await goToPage(currentPage - 1);
-            break;
-          case 'help':
-            await announce.help();
-            break;
-          case 'progress':
-            await announce.progress(currentPage, totalPages);
-            break;
-          case 'set_timer': {
-            const minutes = response.page ?? 10;
-            if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
-            sleepTimerRef.current = setTimeout(async () => {
-              await pauseReading();
-              await speak(`${minutes} dakika doldu, okuma duraklatıldı.`);
-              sleepTimerRef.current = null;
-            }, minutes * 60 * 1000);
-            break;
-          }
-          case 'add_bookmark': {
-            const marks = await addBookmark(bookId, currentPage);
-            await speak(`Sayfa ${currentPage} yer imlerine eklendi. Toplam ${marks.length} yer imi.`);
-            break;
-          }
-          case 'list_bookmarks': {
-            const bookmarks = await getBookmarks(bookId);
-            if (bookmarks.length === 0) {
-              await speak('Henüz yer imi eklenmemiş.');
-            } else {
-              const list = bookmarks.map((p, i) => `${i + 1}. sayfa ${p}`).join(', ');
-              await speak(`Yer imleriniz: ${list}.`);
-            }
-            break;
-          }
-          case 'go_bookmark': {
-            const bmarks = await getBookmarks(bookId);
-            const idx = (response.page ?? 1) - 1;
-            if (bmarks.length === 0) {
-              await speak('Yer imi bulunamadı.');
-            } else if (idx >= 0 && idx < bmarks.length) {
-              await goToPage(bmarks[idx]);
-            } else {
-              await speak('Geçersiz yer imi numarası.');
-            }
-            break;
-          }
-          case 'read_full':
-            setIncludeFrontMatter(true);
-            setCurrentPage(1);
-            setCurrentWordIndex(0);
-            break;
-          case 'skip_intro':
-            setIncludeFrontMatter(false);
-            setCurrentPage(1);
-            setCurrentWordIndex(0);
-            break;
-          case 'go_home':
-            await stopSpeaking();
-            navigation.goBack();
-            break;
-          case 'none':
-            // Sadece konuşma — okuma duraklatılmış halde kalsın,
-            // kullanıcı "devam" diyene kadar
-            break;
-          default:
-            break;
-        }
-      } catch (e) {
-        console.warn('Hata:', e);
-        await speak('Bir sorun oluştu.');
-      } finally {
-        setThinking(false);
-      }
-    },
-    [bookTitle, bookAuthor, currentPage, totalPages, isPlaying, goToPage, pauseReading, resumeReading, navigation]
-  );
-
-  const { isListening, startListening, stopListening } = useSpeech(handleVoiceResult);
-
-  // Double-tap to toggle play/pause
+  // Çift dokunma: oynat/duraklat
   const handleDoubleTap = useCallback(async () => {
     const now = Date.now();
     if (now - lastTap.current < 400) {
@@ -397,28 +193,20 @@ export default function ReaderScreen() {
         await pauseReading();
         await announce.paused();
       } else {
-        resumeReading();
+        readFromCurrent();
       }
     }
     lastTap.current = now;
-  }, [isPlaying, pauseReading, resumeReading]);
+  }, [isPlaying, pauseReading, readFromCurrent]);
 
-  // Swipe gesture
+  // Kaydırma ile sayfa geçişi
   const swipeHandler = useCallback((dx: number) => {
     if (dx < -50 && currentPage < totalPages) {
-      const newPage = currentPage + 1;
-      setCurrentPage(newPage);
-      setCurrentWordIndex(0);
-      updateLastPage(bookId, newPage);
-      announce.pageChanged(newPage);
+      goToPage(currentPage + 1);
     } else if (dx > 50 && currentPage > 1) {
-      const newPage = currentPage - 1;
-      setCurrentPage(newPage);
-      setCurrentWordIndex(0);
-      updateLastPage(bookId, newPage);
-      announce.pageChanged(newPage);
+      goToPage(currentPage - 1);
     }
-  }, [currentPage, totalPages, bookId]);
+  }, [currentPage, totalPages, goToPage]);
 
   const swipeHandlerRef = useRef(swipeHandler);
   swipeHandlerRef.current = swipeHandler;
@@ -432,10 +220,6 @@ export default function ReaderScreen() {
     })
   ).current;
 
-  useEffect(() => {
-    setCurrentWordIndex(0);
-  }, [currentPage]);
-
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -444,27 +228,6 @@ export default function ReaderScreen() {
       </View>
     );
   }
-
-  const renderHighlightedText = () => {
-    if (words.length === 0) {
-      return <Text style={styles.bookText}>{currentText}</Text>;
-    }
-
-    return words.map((word, index) => {
-      const isActive = isPlaying && index === currentWordIndex;
-      return (
-        <Text
-          key={index}
-          style={[
-            styles.bookText,
-            isActive && styles.highlightedText,
-          ]}
-        >
-          {word}{index < words.length - 1 ? ' ' : ''}
-        </Text>
-      );
-    });
-  };
 
   return (
     <View style={styles.container} {...panResponder.panHandlers}>
@@ -493,32 +256,25 @@ export default function ReaderScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Book content */}
-      <Pressable style={styles.contentArea} onPress={handleDoubleTap} accessible={false}>
-        <ScrollView ref={scrollViewRef} contentContainerStyle={styles.scrollContent}>
-          <Text>
-            {renderHighlightedText()}
-          </Text>
-        </ScrollView>
+      {/* Orta alan: oynat/duraklat durumu (çift dokunma ile değişir) */}
+      <Pressable
+        style={styles.contentArea}
+        onPress={handleDoubleTap}
+        accessibilityLabel={isPlaying ? 'Okunuyor. Duraklatmak için çift dokunun.' : 'Duraklatıldı. Okumak için çift dokunun.'}
+        accessibilityRole="button"
+      >
+        <Text style={styles.stateGlyph}>{isPlaying ? '⏸' : '▶'}</Text>
       </Pressable>
 
-      {/* Thinking indicator */}
-      {thinking && (
-        <View style={styles.thinkingBar}>
-          <ActivityIndicator size="small" color="#4fc3f7" />
-          <Text style={styles.thinkingText}>Gemini düşünüyor...</Text>
-        </View>
-      )}
-
       {/* Çeviri göstergesi */}
-      {translating && !thinking && (
+      {translating && (
         <View style={styles.thinkingBar}>
           <ActivityIndicator size="small" color="#4fc3f7" />
           <Text style={styles.thinkingText}>Çevriliyor...</Text>
         </View>
       )}
 
-      {/* Controls */}
+      {/* Kontroller: önceki sayfa — oynat/duraklat — sonraki sayfa */}
       <View style={styles.controls}>
         <TouchableOpacity
           style={styles.controlButton}
@@ -531,7 +287,7 @@ export default function ReaderScreen() {
 
         <TouchableOpacity
           style={[styles.playButton, isPlaying && styles.playingButton]}
-          onPress={isPlaying ? pauseReading : resumeReading}
+          onPress={isPlaying ? pauseReading : readFromCurrent}
           accessibilityLabel={isPlaying ? 'Durdur' : 'Oku'}
           accessibilityRole="button"
         >
@@ -547,20 +303,6 @@ export default function ReaderScreen() {
           <Text style={styles.controlText}>›</Text>
         </TouchableOpacity>
       </View>
-
-      {/* Mic button */}
-      <Pressable
-        onPressIn={startListening}
-        onPressOut={stopListening}
-        style={[styles.micButton, isListening && styles.micActive]}
-        accessibilityLabel="Sesli komut. Basılı tutarak konuşun."
-        accessibilityRole="button"
-        disabled={thinking}
-      >
-        <Text style={styles.micText}>
-          {isListening ? '🎙 Dinleniyor...' : thinking ? '🤔 Düşünüyor...' : '🎤 Komut'}
-        </Text>
-      </Pressable>
     </View>
   );
 }
@@ -616,18 +358,12 @@ const styles = StyleSheet.create({
   },
   contentArea: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  scrollContent: {
-    padding: 24,
-  },
-  bookText: {
-    color: '#fff',
-    fontSize: 20,
-    lineHeight: 34,
-  },
-  highlightedText: {
-    backgroundColor: '#FFD700',
-    color: '#000',
+  stateGlyph: {
+    color: '#222',
+    fontSize: 120,
   },
   thinkingBar: {
     flexDirection: 'row',
@@ -645,14 +381,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 24,
     paddingHorizontal: 24,
     borderTopWidth: 1,
     borderTopColor: '#333',
   },
   controlButton: {
-    width: 80,
-    height: 80,
+    width: 96,
+    height: 96,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#1a1a1a',
@@ -662,15 +398,15 @@ const styles = StyleSheet.create({
   },
   controlText: {
     color: '#fff',
-    fontSize: 40,
+    fontSize: 48,
   },
   playButton: {
-    width: 100,
-    height: 100,
+    width: 120,
+    height: 120,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#1a1a1a',
-    borderRadius: 50,
+    borderRadius: 60,
     borderWidth: 3,
     borderColor: '#fff',
   },
@@ -679,25 +415,6 @@ const styles = StyleSheet.create({
   },
   playButtonText: {
     color: '#fff',
-    fontSize: 40,
-  },
-  micButton: {
-    margin: 16,
-    height: 80,
-    backgroundColor: '#111',
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: '#555',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  micActive: {
-    borderColor: '#f00',
-    backgroundColor: '#1a0000',
-  },
-  micText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 48,
   },
 });
