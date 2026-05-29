@@ -14,6 +14,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { useSpeech } from '../hooks/useSpeech';
 import { useOfflineBooks, splitIntoPages } from '../hooks/useOfflineBooks';
 import { chat, setConversationContext } from '../utils/geminiService';
+import { parseLocalIntent } from '../utils/localIntent';
 import { fetchBookText } from '../sources';
 import { findMainTextStart } from '../utils/frontMatter';
 import { translateToTurkish } from '../utils/translator';
@@ -271,9 +272,14 @@ export default function ReaderScreen() {
       try {
         const appContext = `Kullanıcı "${bookTitle}" kitabını okuyor. Sayfa ${currentPage}/${totalPages}. ${isPlaying ? 'Şu an okunuyor.' : 'Duraklatılmış.'} Yazar: ${bookAuthor}.`;
 
-        const response = await chat(text, appContext);
+        // Komutu önce yerel ayrıştırıcıyla çöz (Gemini kotası gerekmez).
+        // Sadece tanınmayan/sohbet türü ifadelerde Gemini'ye düş.
+        let response = parseLocalIntent(text);
+        if (response.action === 'unknown') {
+          response = await chat(text, appContext);
+        }
 
-        // Önce Gemini'nin yanıtını sesli söyle
+        // Yanıtı sesli söyle
         await speak(response.speech);
 
         // Sonra aksiyonu uygula

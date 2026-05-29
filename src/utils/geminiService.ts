@@ -82,7 +82,7 @@ Komut hiçbir aksiyona uymuyorsa, metni kitap adı kabul et ve open_book döndü
 "yardım/komutlar" → help aksiyonu döndür.`;
 
 export interface GeminiResponse {
-  action: IntentAction | 'none' | 'go_home' | 'go_library';
+  action: IntentAction | 'none' | 'go_home' | 'go_library' | 'unknown';
   book?: string | null;
   page?: number | null;
   speech: string;

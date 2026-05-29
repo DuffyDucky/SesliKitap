@@ -13,7 +13,8 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useOfflineBooks } from '../hooks/useOfflineBooks';
 import { useSpeech } from '../hooks/useSpeech';
-import { chat, setConversationContext } from '../utils/geminiService';
+import { setConversationContext } from '../utils/geminiService';
+import { parseLocalIntent } from '../utils/localIntent';
 import { speak, announce } from '../utils/tts';
 import { BookMetadata } from '../store/bookStorage';
 import { RootStackParamList } from '../../App';
@@ -67,17 +68,23 @@ export default function LibraryScreen() {
     async (text: string) => {
       setThinking(true);
       try {
-        const bookList = books.map((b, i) => `${i + 1}. ${b.title}`).join(', ');
-        const appContext = `Kullanıcı kitaplık ekranında. İndirilen kitaplar: ${bookList}. Kullanıcı sıra numarası veya kitap adı söyleyerek kitap açabilir.`;
+        // Niyet yerel olarak çözülür (Gemini kotası gerekmez).
+        let response = parseLocalIntent(text);
+        if (response.action === 'unknown') {
+          response = { action: 'open_book', book: text.trim(), speech: '' };
+        }
 
-        const response = await chat(text, appContext);
-        await speak(response.speech);
+        if (response.action === 'go_home') {
+          navigation.goBack();
+          return;
+        }
 
         if (response.action === 'open_book' && response.book) {
-          // Kitaplıkta eşleşen kitabı bul
+          // Kitaplıkta eşleşen kitabı bul (ad)
           const lower = response.book.toLowerCase();
           const found = books.find((b) => b.title.toLowerCase().includes(lower));
           if (found) {
+            await speak(`${found.title} açılıyor.`);
             openBook(found);
             return;
           }
@@ -85,14 +92,16 @@ export default function LibraryScreen() {
           // Numara ile eşleştir
           const num = parseInt(response.book, 10);
           if (!isNaN(num) && num >= 1 && num <= books.length) {
+            await speak(`${books[num - 1].title} açılıyor.`);
             openBook(books[num - 1]);
             return;
           }
+
+          await speak('Bu isimde bir kitap bulamadım.');
+          return;
         }
 
-        if (response.action === 'go_home') {
-          navigation.goBack();
-        }
+        if (response.speech) await speak(response.speech);
       } catch (e) {
         console.warn('Hata:', e);
         await speak('Bir sorun oluştu.');

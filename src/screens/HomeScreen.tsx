@@ -11,7 +11,8 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useSpeech } from '../hooks/useSpeech';
-import { chat, clearConversation } from '../utils/geminiService';
+import { clearConversation } from '../utils/geminiService';
+import { parseLocalIntent } from '../utils/localIntent';
 import { speak, announce, stopSpeaking } from '../utils/tts';
 import { searchBook, fetchBookText } from '../sources';
 import { RootStackParamList } from '../../App';
@@ -73,18 +74,23 @@ export default function HomeScreen() {
     async (text: string) => {
       setThinking(true);
       try {
-        const response = await chat(text, 'Kullanıcı ana ekranda. Kitap arayabilir, öneri isteyebilir veya sohbet edebilir.');
-
-        setLastResponse(response.speech);
-        await speak(response.speech);
+        // Niyet yerel olarak çözülür (Gemini kotası gerekmez).
+        // Tanınmayan ifadeleri doğrudan kitap adı kabul et.
+        let response = parseLocalIntent(text);
+        if (response.action === 'unknown') {
+          response = { action: 'open_book', book: text.trim(), speech: '' };
+        }
 
         switch (response.action) {
           case 'open_book':
             if (response.book) {
+              setLastResponse(`${response.book} aranıyor.`);
               await searchAndOpenBook(response.book);
             }
             break;
           case 'go_library':
+            setLastResponse(response.speech);
+            await speak(response.speech);
             announce.goingToLibrary();
             navigation.navigate('Library');
             break;
@@ -92,7 +98,10 @@ export default function HomeScreen() {
             await announce.help();
             break;
           default:
-            // "none" veya diğer aksiyonlar — sadece konuşma yapıldı
+            if (response.speech) {
+              setLastResponse(response.speech);
+              await speak(response.speech);
+            }
             break;
         }
       } catch (e: any) {
