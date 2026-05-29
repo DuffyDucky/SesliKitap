@@ -12,13 +12,7 @@
       "backgroundColor": "#000000"
     },
     "plugins": [
-      [
-        "expo-speech-recognition",
-        {
-          "microphonePermission": "SesliKitap sesli komutlarınızı anlamak için mikrofona erişim istiyor.",
-          "speechRecognitionPermission": "SesliKitap sesli komutlarınızı anlamak için konuşma tanıma istiyor."
-        }
-      ]
+      "expo-speech-recognition"
     ],
     "ios": {
       "supportsTablet": true,
@@ -42,6 +36,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "05fd8357-fc03-4d67-bd2d-e45f8d9e1f6c"
+      }
     }
   }
 }
