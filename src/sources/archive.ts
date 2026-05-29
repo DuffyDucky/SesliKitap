@@ -42,11 +42,30 @@ function pickField(v: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Türkçe harfleri sade ASCII'ye indir + küçült (alaka sıralaması için). */
+function norm(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/ı/g, 'i').replace(/ş/g, 's').replace(/ğ/g, 'g').replace(/ç/g, 'c')
+    .replace(/ö/g, 'o').replace(/ü/g, 'u')
+    .replace(/â/g, 'a').replace(/î/g, 'i').replace(/û/g, 'u')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Başlıkta geçen sorgu kelimesi sayısı — yüksek skor = daha alakalı. */
+function titleScore(title: string, qTokens: string[]): number {
+  const nt = norm(title);
+  return qTokens.reduce((acc, t) => acc + (nt.includes(t) ? 1 : 0), 0);
+}
+
 export const archiveSource: BookSource = {
   name: 'archive',
 
   async search(query: string): Promise<BookSearchResult[]> {
-    const q = `(${query}) AND mediatype:texts AND language:(Turkish OR turkish OR Türkçe)`;
+    // archive.org dil kodunu çoğunlukla "tur" (ISO 639-2) olarak saklar; bazıları "Turkish".
+    const q = `(${query}) AND mediatype:texts AND language:(tur OR Turkish OR Turkce)`;
     const url =
       `${ADV}?q=${encodeURIComponent(q)}` +
       `&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=format` +
@@ -56,7 +75,8 @@ export const archiveSource: BookSource = {
       if (!res.ok) return [];
       const data = await res.json();
       const docs: any[] = data?.response?.docs ?? [];
-      return docs
+      const qTokens = norm(query).split(' ').filter((t) => t.length >= 2);
+      const results = docs
         .filter((d) => {
           const fmt = Array.isArray(d.format) ? d.format : d.format ? [d.format] : [];
           return fmt.some((f: string) => /djvutxt|^text$/i.test(String(f)));
@@ -68,6 +88,9 @@ export const archiveSource: BookSource = {
           source: 'archive',
           sourceId: String(d.identifier),
         }));
+      // Başlığı sorguya en çok uyan sonuçları öne al (alaka sıralaması).
+      results.sort((a, b) => titleScore(b.title, qTokens) - titleScore(a.title, qTokens));
+      return results;
     } catch (e) {
       console.warn('[archive] arama hatası:', e);
       return [];
