@@ -15,6 +15,7 @@ import { useSpeech } from '../hooks/useSpeech';
 import { useOfflineBooks, splitIntoPages } from '../hooks/useOfflineBooks';
 import { chat, setConversationContext } from '../utils/geminiService';
 import { fetchBookText } from '../sources';
+import { findMainTextStart } from '../utils/frontMatter';
 import { speak, speakBook, stopSpeaking, adjustRate, getRate, announce } from '../utils/tts';
 import { getBook, updateLastPage, addBookmark, getBookmarks } from '../store/bookStorage';
 import { readAsStringAsync } from 'expo-file-system';
@@ -38,6 +39,9 @@ export default function ReaderScreen() {
   const { bookId, bookTitle, bookAuthor } = route.params;
 
   const [pages, setPages] = useState<string[]>([]);
+  const [fullText, setFullText] = useState('');
+  const [mainStart, setMainStart] = useState(0);
+  const [includeFrontMatter, setIncludeFrontMatter] = useState(false);
   const [currentPage, setCurrentPage] = useState(route.params.startPage ?? 1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -83,7 +87,9 @@ export default function ReaderScreen() {
         }
 
         if (!cancelled) {
-          setPages(splitIntoPages(text));
+          setIncludeFrontMatter(false);
+          setMainStart(findMainTextStart(text));
+          setFullText(text);
           await announce.bookOpened(bookTitle, 'birinci bölüm');
         }
       } catch {
@@ -98,6 +104,13 @@ export default function ReaderScreen() {
       cancelled = true;
     };
   }, [bookId, bookTitle]);
+
+  // Ham metin / ön bilgi tercihine göre sayfaları türet.
+  useEffect(() => {
+    if (!fullText) return;
+    const body = includeFrontMatter ? fullText : fullText.slice(mainStart);
+    setPages(splitIntoPages(body));
+  }, [fullText, mainStart, includeFrontMatter]);
 
   const currentText = pages[currentPage - 1] ?? '';
   const totalPages = pages.length;
@@ -311,6 +324,16 @@ export default function ReaderScreen() {
             }
             break;
           }
+          case 'read_full':
+            setIncludeFrontMatter(true);
+            setCurrentPage(1);
+            setCurrentWordIndex(0);
+            break;
+          case 'skip_intro':
+            setIncludeFrontMatter(false);
+            setCurrentPage(1);
+            setCurrentWordIndex(0);
+            break;
           case 'go_home':
             await stopSpeaking();
             navigation.goBack();
