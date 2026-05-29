@@ -16,6 +16,8 @@ export type IntentAction =
   | 'set_timer'
   | 'add_bookmark'
   | 'list_bookmarks'
+  | 'read_full'
+  | 'skip_intro'
   | 'go_bookmark';
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
@@ -65,12 +67,16 @@ AKSIYONLAR:
 - "add_bookmark" — yer imi ekle
 - "list_bookmarks" — yer imlerini listele
 - "go_bookmark" — yer imine git (page alanına yer imi indeksi yaz)
+- "read_full" — kullanıcı ön bilgileri/önsözü de okumak veya en baştan başlamak istiyor
+- "skip_intro" — kullanıcı ön bilgileri/önsözü atlayıp asıl metne/hikâyeye geçmek istiyor
 
 ÖRNEKLER:
 "merhaba" → {"action":"none","book":null,"page":null,"speech":"Merhaba! Ne yapmak istersiniz?"}
 "dur" → {"action":"pause","book":null,"page":null,"speech":"Duraklatıyorum."}
 "Kürk Mantolu Madonna aç" → {"action":"open_book","book":"Kürk Mantolu Madonna","page":null,"speech":"Aranıyor."}
 "neredeyim" → {"action":"progress","book":null,"page":null,"speech":"Bilgi veriyorum."}
+"en baştan oku" → {"action":"read_full","book":null,"page":null,"speech":"Ön bilgiler dahil en baştan başlıyorum."}
+"önsözü atla" → {"action":"skip_intro","book":null,"page":null,"speech":"Asıl metne geçiyorum."}
 
 Komut hiçbir aksiyona uymuyorsa, metni kitap adı kabul et ve open_book döndür.
 "yardım/komutlar" → help aksiyonu döndür.`;
