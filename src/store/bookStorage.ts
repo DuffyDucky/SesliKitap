@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const BOOKS_KEY = '@seslikitap_books';
 const SPEED_KEY = '@seslikitap_speed';
+const LANGUAGE_KEY = '@app_language';
 
 export interface BookMetadata {
   id: string;
@@ -99,4 +100,17 @@ export async function loadSpeed(): Promise<number | null> {
   if (!val) return null;
   const num = parseFloat(val);
   return isNaN(num) ? null : num;
+}
+
+export type AppLanguage = 'en' | 'tr';
+
+/** Global okuma dili. Kayıtlı değer yoksa varsayılan 'en' (İngilizce). */
+export async function getLanguage(): Promise<AppLanguage> {
+  const val = await AsyncStorage.getItem(LANGUAGE_KEY);
+  return val === 'tr' ? 'tr' : 'en';
+}
+
+/** Global okuma dilini kalıcı olarak ayarlar. */
+export async function setLanguage(lang: AppLanguage): Promise<void> {
+  await AsyncStorage.setItem(LANGUAGE_KEY, lang);
 }
