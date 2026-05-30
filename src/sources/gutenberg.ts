@@ -7,7 +7,7 @@
 import { BookSource, BookSearchResult } from './types';
 import { fetchWithTimeout } from '../utils/fetchWithTimeout';
 import { stripGutenbergBoilerplate } from './gutenbergText';
-import { translateTitleToEnglish } from '../utils/translator';
+import { resolveEnglishTitle } from '../utils/geminiService';
 
 const SEARCH = 'https://www.gutenberg.org/ebooks/search/';
 const EPUB = 'https://www.gutenberg.org/cache/epub';
@@ -20,7 +20,7 @@ export const gutenbergSource: BookSource = {
   async search(query: string): Promise<BookSearchResult[]> {
     let q = query;
     try {
-      q = await translateTitleToEnglish(query);
+      q = await resolveEnglishTitle(query);
     } catch {
       q = query;
     }

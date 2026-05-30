@@ -1,12 +1,10 @@
 /**
- * Çeviri yardımcıları — ÜCRETSİZ/keysiz Google Translate web uç noktasını
- * kullanır (Gemini DEĞİL). Gemini'nin günlük kotası (bu projede 20 istek/gün)
- * sadece sesli komut anlamaya kalsın diye çeviri ayrı servise taşındı.
+ * Çeviri yardımcısı — ÜCRETSİZ/keysiz Google Translate web uç noktasını
+ * kullanır (Gemini DEĞİL). Gemini'nin günlük kotası (20 istek/gün) sesli
+ * komut/arama anlamaya kalsın diye sayfa çevirisi ayrı servise taşındı.
  *
  * - translateToTurkish: okunan SAYFAYI İngilizceden Türkçeye çevirir (parçalı,
  *   bellek + AsyncStorage önbellekli).
- * - translateTitleToEnglish: Gutenberg araması için Türkçe başlığı İngilizceye
- *   çevirir.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchWithTimeout } from './fetchWithTimeout';
@@ -70,14 +68,3 @@ export async function translateToTurkish(englishText: string): Promise<string> {
   return tr;
 }
 
-/** Türkçe kitap adını Gutenberg araması için İngilizceye çevirir. */
-export async function translateTitleToEnglish(turkishTitle: string): Promise<string> {
-  const t = turkishTitle.trim();
-  if (!t) return t;
-  try {
-    const en = (await gtranslate(t, 'tr', 'en')).split('\n')[0].trim();
-    return en.length > 0 && en.length < 120 ? en : t;
-  } catch {
-    return t;
-  }
-}

@@ -186,3 +186,42 @@ export async function chat(
     return { action: 'none', speech: 'Bir sorun oluştu, tekrar deneyin.' };
   }
 }
+
+/**
+ * Türkçe (veya herhangi bir dildeki) kitap adını kanonik İNGİLİZCE eser
+ * başlığına çevirir — Gutenberg araması için. Intent JSON akışından ve
+ * conversationHistory'den bağımsız tek-atış istek. Hata/kota/boş yanıtta
+ * girdi sorgusunu olduğu gibi döndürür (çökme yok).
+ */
+export async function resolveEnglishTitle(query: string): Promise<string> {
+  const q = query.trim();
+  if (!q) return query;
+  if (!GEMINI_API_KEY || GEMINI_API_KEY === 'your_gemini_api_key_here') return q;
+
+  const prompt =
+    'Aşağıdaki kitap adının KANONİK İNGİLİZCE başlığını ver. ' +
+    'Sadece başlığı yaz, başka hiçbir şey ekleme. ' +
+    'Zaten İngilizceyse veya emin değilsen olduğu gibi tekrarla.\n\n' +
+    `Kitap: ${q}`;
+
+  try {
+    const res = await fetchWithTimeout(GEMINI_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0, maxOutputTokens: 80 },
+      }),
+    }, 15000);
+
+    if (!res.ok) return q;
+    const data = await res.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!text) return q;
+
+    const title = text.replace(/^["'`]+|["'`]+$/g, '').split('\n')[0].trim();
+    return title.length > 0 && title.length < 120 ? title : q;
+  } catch {
+    return q;
+  }
+}
