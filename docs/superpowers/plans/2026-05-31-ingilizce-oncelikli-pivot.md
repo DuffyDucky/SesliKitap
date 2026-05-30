@@ -403,11 +403,13 @@ export interface GeminiResponse {
 `parseLocalIntent` içinde, boş kontrolünden HEMEN SONRA (satır ~41, `if (!t) return ...` ardından), kitap-açma kurallarından ÖNCE ekle. norm() Türkçe karakterleri sadeleştirir ("türkçe"→"turkce"); bu yüzden ASCII kalıplar kullan:
 
 ```ts
-  // 0) Okuma dili değiştirme (kitap-açma kuralından ÖNCE — "...oku" çakışmasın)
-  if (/\b(turkce oku|dili turkce|turkceye cevir|turkce dinle|cevir)\b/.test(t)) {
+  // 0) Okuma dili değiştirme (kitap-açma kuralından ÖNCE — "...oku" çakışmasın).
+  // Kalıplar DAR tutulur: bare "cevir" ("sayfayı çevir") veya "orijinal dil"
+  // ("orijinal dil nedir") gibi yaygın ifadeleri yanlış yakalamamak için.
+  if (/\b(turkce oku|dili turkce|turkceye cevir|turkce dinle)\b/.test(t)) {
     return { action: 'set_language', lang: 'tr', speech: 'Okuma dili Türkçe olarak ayarlandı.' };
   }
-  if (/\b(ingilizce oku|dili ingilizce|ingilizce dinle|orijinal dil|orijinalinden)\b/.test(t)) {
+  if (/\b(ingilizce oku|dili ingilizce|ingilizce dinle|orijinal dile|orijinalinden)\b/.test(t)) {
     return { action: 'set_language', lang: 'en', speech: 'Okuma dili İngilizce olarak ayarlandı.' };
   }
 ```
