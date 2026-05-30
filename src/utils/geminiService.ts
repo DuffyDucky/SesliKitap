@@ -18,7 +18,8 @@ export type IntentAction =
   | 'list_bookmarks'
   | 'read_full'
   | 'skip_intro'
-  | 'go_bookmark';
+  | 'go_bookmark'
+  | 'set_language';
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || 'gemini-2.5-flash-lite';
@@ -85,6 +86,7 @@ export interface GeminiResponse {
   action: IntentAction | 'none' | 'go_home' | 'go_library' | 'unknown';
   book?: string | null;
   page?: number | null;
+  lang?: 'en' | 'tr';
   speech: string;
 }
 

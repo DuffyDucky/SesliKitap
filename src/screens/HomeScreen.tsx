@@ -15,6 +15,7 @@ import { clearConversation } from '../utils/geminiService';
 import { parseLocalIntent } from '../utils/localIntent';
 import { speak, announce, stopSpeaking } from '../utils/tts';
 import { searchBook, fetchBookText } from '../sources';
+import { setLanguage } from '../store/bookStorage';
 import { RootStackParamList } from '../../App';
 
 const { height } = Dimensions.get('window');
@@ -86,6 +87,13 @@ export default function HomeScreen() {
             if (response.book) {
               setLastResponse(`${response.book} aranıyor.`);
               await searchAndOpenBook(response.book);
+            }
+            break;
+          case 'set_language':
+            if (response.lang) {
+              await setLanguage(response.lang);
+              setLastResponse(response.speech);
+              await speak(response.speech);
             }
             break;
           case 'go_library':

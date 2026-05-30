@@ -40,6 +40,16 @@ export function parseLocalIntent(input: string): GeminiResponse {
   const t = norm(raw);
   if (!t) return { action: 'unknown', speech: '' };
 
+  // 0) Okuma dili değiştirme (kitap-açma kuralından ÖNCE — "...oku" çakışmasın).
+  // Kalıplar dar tutulur: bare "cevir" ("sayfayı çevir") veya "orijinal dil"
+  // ("orijinal dil nedir") gibi ifadeleri yanlış yakalamamak için.
+  if (/\b(turkce oku|dili turkce|turkceye cevir|turkce dinle)\b/.test(t)) {
+    return { action: 'set_language', lang: 'tr', speech: 'Okuma dili Türkçe olarak ayarlandı.' };
+  }
+  if (/\b(ingilizce oku|dili ingilizce|ingilizce dinle|orijinal dile|orijinalinden)\b/.test(t)) {
+    return { action: 'set_language', lang: 'en', speech: 'Okuma dili İngilizce olarak ayarlandı.' };
+  }
+
   // 1) Ön bilgi / önsöz komutları (kitap açmadan ÖNCE — "baştan oku" çakışmasın)
   if (/\b(onsoz|on bilgi|on bilgileri|kapaktan|en bastan|bastan oku|en bastan oku)\b/.test(t)) {
     return { action: 'read_full', speech: 'Ön bilgiler dahil en baştan başlıyorum.' };

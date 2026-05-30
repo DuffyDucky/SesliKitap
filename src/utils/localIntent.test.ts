@@ -71,3 +71,41 @@ test('"10 dakika sonra dur" → set_timer 10', () => {
   assert.equal(r.action, 'set_timer');
   assert.equal(r.page, 10);
 });
+
+test('"dili türkçe yap" → set_language tr', () => {
+  const r = parseLocalIntent('dili türkçe yap');
+  assert.equal(r.action, 'set_language');
+  assert.equal(r.lang, 'tr');
+});
+
+test('"türkçe oku" → set_language tr (kitap açma değil)', () => {
+  const r = parseLocalIntent('türkçe oku');
+  assert.equal(r.action, 'set_language');
+  assert.equal(r.lang, 'tr');
+});
+
+test('"dili ingilizce yap" → set_language en', () => {
+  const r = parseLocalIntent('dili ingilizce yap');
+  assert.equal(r.action, 'set_language');
+  assert.equal(r.lang, 'en');
+});
+
+test('"ingilizce oku" → set_language en', () => {
+  const r = parseLocalIntent('ingilizce oku');
+  assert.equal(r.action, 'set_language');
+  assert.equal(r.lang, 'en');
+});
+
+test('regresyon: "Sefiller oku" → hâlâ open_book', () => {
+  const r = parseLocalIntent('Sefiller oku');
+  assert.equal(r.action, 'open_book');
+  assert.equal(r.book, 'Sefiller');
+});
+
+test('false-positive yok: "sayfayı çevir" → set_language DEĞİL', () => {
+  assert.notEqual(parseLocalIntent('sayfayı çevir').action, 'set_language');
+});
+
+test('false-positive yok: "orijinal dil nedir" → set_language DEĞİL', () => {
+  assert.notEqual(parseLocalIntent('orijinal dil nedir').action, 'set_language');
+});
