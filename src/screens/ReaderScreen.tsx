@@ -14,8 +14,8 @@ import { useOfflineBooks, splitIntoPages } from '../hooks/useOfflineBooks';
 import { fetchBookText } from '../sources';
 import { findMainTextStart } from '../utils/frontMatter';
 import { translateToTurkish } from '../utils/translator';
-import { speakBook, stopSpeaking, getRate, speak, announce } from '../utils/tts';
-import { getBook, updateLastPage } from '../store/bookStorage';
+import { speakBook, stopSpeaking, getRate, speak, announce, setContentLanguage } from '../utils/tts';
+import { getBook, updateLastPage, getLanguage } from '../store/bookStorage';
 import { readAsStringAsync } from 'expo-file-system';
 import { RootStackParamList } from '../../App';
 
@@ -38,8 +38,8 @@ export default function ReaderScreen() {
   const [includeFrontMatter] = useState(false);
   const [pageText, setPageText] = useState('');
   const [translating, setTranslating] = useState(false);
-  // Gutenberg kaynağı İngilizce metin döndürür → sayfa sayfa Türkçeye çevrilir.
-  const needsTranslation = bookId.startsWith('gutenberg:');
+  // Global okuma dili: 'tr' ise sayfa Google Translate ile çevrilir, 'en' ise ham okunur.
+  const [needsTranslation, setNeedsTranslation] = useState(false);
   const [currentPage, setCurrentPage] = useState(route.params.startPage ?? 1);
   const [currentSentence, setCurrentSentence] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -47,6 +47,17 @@ export default function ReaderScreen() {
   const lastTap = useRef(0);
   const isPlayingRef = useRef(false);
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Global dil ayarını yükle; TTS içerik dilini ve çeviri ihtiyacını belirle.
+  useEffect(() => {
+    let cancelled = false;
+    getLanguage().then((lang) => {
+      if (cancelled) return;
+      setNeedsTranslation(lang === 'tr');
+      setContentLanguage(lang === 'tr' ? 'tr' : 'en');
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   // Kitap metnini yükle
   useEffect(() => {
