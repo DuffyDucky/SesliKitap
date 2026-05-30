@@ -1,6 +1,6 @@
 /**
  * Birleşik kitap kaynağı API'si.
- * searchBook() → kaynaklarda sırayla ara, ilk eşleşmeyi döndür.
+ * searchBook() → tüm kaynaklardan sonuç toplar (şu an tek kaynak: Gutenberg).
  * fetchBookText() → global ID'nin kaynak prefix'ine göre uygun kaynağı çağır.
  *   Sonuç kısa süreli cache'lenir; HomeScreen kalite kapısı için çağırınca
  *   ReaderScreen tekrar indirmeden aynı metni kullanır.

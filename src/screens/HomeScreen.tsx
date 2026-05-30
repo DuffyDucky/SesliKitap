@@ -138,8 +138,8 @@ export default function HomeScreen() {
         Voice Book
       </Text>
 
-      <Text style={styles.subtitle} accessibilityLabel="Türkçe sesli kitap">
-        Türkçe Sesli Kitap
+      <Text style={styles.subtitle} accessibilityLabel="Sesli kitap">
+        Sesli Kitap
       </Text>
 
       {(transcript !== '' || lastResponse !== '') && (
