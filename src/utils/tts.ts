@@ -1,32 +1,38 @@
 import * as Speech from 'expo-speech';
 import { saveSpeed, loadSpeed } from '../store/bookStorage';
 
-const DEFAULT_LANGUAGE = 'tr-TR';
+const ASSISTANT_LANGUAGE = 'tr-TR'; // asistan anonsları DAİMA Türkçe
 let currentRate = 1.0;
-let selectedVoice: string | undefined;
+let contentLanguage: 'en' | 'tr' = 'en'; // okunan kitap içeriğinin dili
 let loadPromise: Promise<void> | null = null;
 
-/**
- * Cihazda mevcut Türkçe sesleri tarar ve en iyi olanı seçer.
- * Samsung cihazlarda Samsung TTS, diğerlerinde Google TTS tercih edilir.
- */
-function loadBestVoice(): Promise<void> {
+// Dil başına seçili ses kimliği.
+const selectedVoice: Record<'tr' | 'en', string | undefined> = {
+  tr: undefined,
+  en: undefined,
+};
+
+/** Bir dil önekine (tr/en) uyan en iyi sesi seçer: Samsung > Google > ilk. */
+function pickVoice(
+  voices: Speech.Voice[],
+  prefix: 'tr' | 'en'
+): string | undefined {
+  const matches = voices.filter((v) => v.language?.startsWith(prefix));
+  if (matches.length === 0) return undefined;
+  const samsung = matches.find((v) => v.identifier?.toLowerCase().includes('samsung'));
+  const google = matches.find((v) => v.identifier?.toLowerCase().includes('google'));
+  return (samsung || google || matches[0]).identifier;
+}
+
+/** Cihazdaki Türkçe ve İngilizce en iyi sesleri tek seferde tarar ve cache'ler. */
+function loadBestVoices(): Promise<void> {
   if (loadPromise) return loadPromise;
   loadPromise = (async () => {
     try {
       const voices = await Speech.getAvailableVoicesAsync();
-      const turkishVoices = voices.filter(
-        (v) => v.language === 'tr-TR' || v.language?.startsWith('tr')
-      );
-
-      if (turkishVoices.length > 0) {
-        // Öncelik sırası: Samsung > Google > diğer
-        const samsung = turkishVoices.find((v) => v.identifier?.toLowerCase().includes('samsung'));
-        const google = turkishVoices.find((v) => v.identifier?.toLowerCase().includes('google'));
-        const best = samsung || google || turkishVoices[0];
-        selectedVoice = best.identifier;
-        console.log('Seçilen ses:', best.identifier, best.name);
-      }
+      selectedVoice.tr = pickVoice(voices, 'tr');
+      selectedVoice.en = pickVoice(voices, 'en');
+      console.log('Seçilen sesler:', selectedVoice);
     } catch (e) {
       console.warn('Ses listesi alınamadı:', e);
     }
@@ -34,19 +40,24 @@ function loadBestVoice(): Promise<void> {
   return loadPromise;
 }
 
+/** Okunan kitap içeriğinin dilini belirler (speakBook bunu kullanır). */
+export function setContentLanguage(lang: 'en' | 'tr'): void {
+  contentLanguage = lang;
+}
+
 // Uygulama başladığında sesleri ve hız ayarını yükle
-loadBestVoice();
+loadBestVoices();
 loadSpeed().then((saved) => {
   if (saved !== null) currentRate = saved;
 });
 
 export async function speak(text: string, rate?: number): Promise<void> {
-  await loadBestVoice();
+  await loadBestVoices();
   await Speech.stop();
   return new Promise((resolve, reject) => {
     Speech.speak(text, {
-      language: DEFAULT_LANGUAGE,
-      voice: selectedVoice,
+      language: ASSISTANT_LANGUAGE,
+      voice: selectedVoice.tr,
       rate: rate ?? currentRate,
       pitch: 1.0,
       onDone: resolve,
@@ -59,11 +70,13 @@ export async function speak(text: string, rate?: number): Promise<void> {
 }
 
 export async function speakBook(text: string, rate?: number): Promise<void> {
+  await loadBestVoices();
   await Speech.stop();
+  const language = contentLanguage === 'tr' ? 'tr-TR' : 'en-US';
   return new Promise((resolve) => {
     Speech.speak(text, {
-      language: DEFAULT_LANGUAGE,
-      voice: selectedVoice,
+      language,
+      voice: selectedVoice[contentLanguage],
       rate: rate ?? currentRate,
       pitch: 1.0,
       onDone: resolve,
