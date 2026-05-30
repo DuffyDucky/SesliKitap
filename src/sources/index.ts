@@ -7,12 +7,11 @@
  */
 import { BookSource, BookSearchResult } from './types';
 import { listBundledBooks } from './bundled';
-import { archiveSource } from './archive';
 import { gutenbergSource } from './gutenberg';
 
-// Kaynak sırası: önce archive.org (Türkçe tam metin), sonra Gutenberg
-// (İngilizce + ReaderScreen'de sayfa sayfa Türkçe çeviri).
-const SOURCES: BookSource[] = [archiveSource, gutenbergSource];
+// Tek kaynak: Project Gutenberg (İngilizce tam metin).
+// Türkçe okuma istenirse ReaderScreen sayfayı Google Translate ile çevirir.
+const SOURCES: BookSource[] = [gutenbergSource];
 
 function sourceByName(name: string): BookSource | undefined {
   return SOURCES.find((s) => s.name === name);
@@ -20,8 +19,7 @@ function sourceByName(name: string): BookSource | undefined {
 
 export async function searchBook(query: string): Promise<BookSearchResult[]> {
   console.log(`[searchBook] sorgu: "${query}"`);
-  // Tüm kaynaklardan sonuç topla (kaynak sırasına göre: archive önce).
-  // Böylece archive'da bulunmayan kitaplar Gutenberg adaylarına düşebilir.
+  // Tüm kaynaklardan sonuç topla (şu an tek kaynak: Gutenberg).
   const all: BookSearchResult[] = [];
   for (const source of SOURCES) {
     try {
@@ -56,7 +54,7 @@ function cacheSet(id: string, text: string): void {
 }
 
 /**
- * "archive:identifier" formatındaki global ID'den temiz metin getirir.
+ * "gutenberg:1234" formatındaki global ID'den temiz metin getirir.
  * Önce cache'e bakar; yoksa kaynaktan çekip cache'ler.
  */
 export async function fetchBookText(globalId: string): Promise<string> {

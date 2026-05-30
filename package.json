@@ -7,7 +7,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "test": "tsx src/sources/archive.test.ts && tsx src/utils/frontMatter.test.ts && tsx src/sources/gutenbergText.test.ts && tsx src/utils/textChunk.test.ts && tsx src/utils/localIntent.test.ts"
+    "test": "tsx src/utils/frontMatter.test.ts && tsx src/sources/gutenbergText.test.ts && tsx src/utils/textChunk.test.ts && tsx src/utils/localIntent.test.ts"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
