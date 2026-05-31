@@ -1,27 +1,29 @@
 /**
  * Birleşik kitap kaynağı API'si.
- * searchBook() → tüm kaynaklardan sonuç toplar (şu an tek kaynak: Gutenberg).
- * fetchBookText() → global ID'nin kaynak prefix'ine göre uygun kaynağı çağır.
+ * searchBook() → SEARCH_SOURCES üzerinden sonuç toplar (şu an: yalnızca Gutenberg).
+ * fetchBookText() → ALL_SOURCES üzerinden kaynak bulur (Gutenberg + gömülü).
  *   Sonuç kısa süreli cache'lenir; HomeScreen kalite kapısı için çağırınca
  *   ReaderScreen tekrar indirmeden aynı metni kullanır.
  */
 import { BookSource, BookSearchResult } from './types';
-import { listBundledBooks } from './bundled';
+import { bundledSource, listBundledBooks } from './bundled';
 import { gutenbergSource } from './gutenberg';
 
-// Tek kaynak: Project Gutenberg (İngilizce tam metin).
-// Türkçe okuma istenirse ReaderScreen sayfayı Google Translate ile çevirir.
-const SOURCES: BookSource[] = [gutenbergSource];
+// Arama YALNIZCA Gutenberg'e gider; gömülü kitaplar şimdilik aramaya karışmaz.
+const SEARCH_SOURCES: BookSource[] = [gutenbergSource];
+// Metin çözme tüm kaynakları kapsar: Okuyucu kütüphaneden seçilen "bundled:..."
+// metnini çevrimdışı açabilsin diye.
+const ALL_SOURCES: BookSource[] = [gutenbergSource, bundledSource];
 
 function sourceByName(name: string): BookSource | undefined {
-  return SOURCES.find((s) => s.name === name);
+  return ALL_SOURCES.find((s) => s.name === name);
 }
 
 export async function searchBook(query: string): Promise<BookSearchResult[]> {
   console.log(`[searchBook] sorgu: "${query}"`);
-  // Tüm kaynaklardan sonuç topla (şu an tek kaynak: Gutenberg).
+  // Yalnızca SEARCH_SOURCES üzerinde döner — gömülü kitaplar aramaya dahil değil.
   const all: BookSearchResult[] = [];
-  for (const source of SOURCES) {
+  for (const source of SEARCH_SOURCES) {
     try {
       const hits = await source.search(query);
       console.log(`[searchBook] ${source.name}: ${hits.length} sonuç`);
