@@ -56,8 +56,9 @@ function cacheSet(id: string, text: string): void {
 }
 
 /**
- * "gutenberg:1234" formatındaki global ID'den temiz metin getirir.
- * Önce cache'e bakar; yoksa kaynaktan çekip cache'ler.
+ * "kaynak:id" formatındaki global ID'den temiz metin getirir
+ * (örn. "gutenberg:1234" veya "bundled:omer-seyfettin-forsa").
+ * Önce cache'e bakar; yoksa ilgili kaynaktan çekip cache'ler.
  */
 export async function fetchBookText(globalId: string): Promise<string> {
   const cached = cacheGet(globalId);
@@ -75,5 +76,5 @@ export async function fetchBookText(globalId: string): Promise<string> {
   return text;
 }
 
-export { listBundledBooks };
+export { listBundledBooks, bundledSource };
 export type { BookSearchResult, BookSource };

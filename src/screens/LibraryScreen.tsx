@@ -13,7 +13,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { useSpeech } from '../hooks/useSpeech';
 import { parseLocalIntent } from '../utils/localIntent';
 import { speak } from '../utils/tts';
-import { listBundledBooks, BookSearchResult } from '../sources';
+import { listBundledBooks, bundledSource, BookSearchResult } from '../sources';
 import { RootStackParamList } from '../../App';
 
 type LibraryNavProp = StackNavigationProp<RootStackParamList, 'Library'>;
@@ -67,12 +67,12 @@ export default function LibraryScreen() {
         }
 
         if (response.action === 'open_book' && response.book) {
-          // İsimle eşleştir
-          const lower = response.book.toLowerCase();
-          const found = books.find((b) => b.title.toLowerCase().includes(lower));
-          if (found) {
-            await speak(`${found.title} açılıyor.`);
-            openBook(found);
+          // İsim/takma ad ile eşleştir (Türkçe-duyarlı normalize, bundled kaynağı).
+          // STT "istiklal marsi" dese bile "İstiklâl Marşı" eşleşir.
+          const matches = await bundledSource.search(response.book);
+          if (matches.length > 0) {
+            await speak(`${matches[0].title} açılıyor.`);
+            openBook(matches[0]);
             return;
           }
           // Numarayla eşleştir
