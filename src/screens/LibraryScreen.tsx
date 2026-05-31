@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,58 +7,40 @@ import {
   StyleSheet,
   Pressable,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { useOfflineBooks } from '../hooks/useOfflineBooks';
 import { useSpeech } from '../hooks/useSpeech';
-import { setConversationContext } from '../utils/geminiService';
 import { parseLocalIntent } from '../utils/localIntent';
-import { speak, announce } from '../utils/tts';
-import { BookMetadata } from '../store/bookStorage';
+import { speak } from '../utils/tts';
+import { listBundledBooks, BookSearchResult } from '../sources';
 import { RootStackParamList } from '../../App';
 
 type LibraryNavProp = StackNavigationProp<RootStackParamList, 'Library'>;
 
 export default function LibraryScreen() {
   const navigation = useNavigation<LibraryNavProp>();
-  const { books, loadBooks, deleteBook } = useOfflineBooks();
+  const books = useMemo(() => listBundledBooks(), []);
   const [thinking, setThinking] = useState(false);
 
-  useEffect(() => {
-    loadBooks().then(() => {
-      // Kitaplık açılışında kitap sayısını sesli bildir
-    });
-  }, [loadBooks]);
-
-  // Kitaplık açılışında kitap sayısını bildir
+  // Kütüphane açılışında kitap sayısını bir kez sesli bildir.
   const announcedRef = React.useRef(false);
   useEffect(() => {
-    if (!announcedRef.current && books.length >= 0) {
-      announcedRef.current = true;
-      if (books.length === 0) {
-        speak('Kitaplığınız boş. Ana ekrandan kitap adı söyleyerek kitap indirebilirsiniz.');
-      } else {
-        speak(`Kitaplığınızda ${books.length} kitap var. Kitap adı veya numarası söyleyerek açabilirsiniz.`);
-      }
-    }
-  }, [books]);
-
-  useEffect(() => {
-    if (books.length > 0) {
-      const bookList = books.map((b, i) => `${i + 1}. ${b.title} (${b.author})`).join(', ');
-      setConversationContext(`Kullanıcı kitaplık ekranında. İndirilen kitaplar: ${bookList}`);
+    if (announcedRef.current) return;
+    announcedRef.current = true;
+    if (books.length === 0) {
+      speak('Kütüphane şu an boş.');
+    } else {
+      speak(`Kütüphanede ${books.length} kitap var. Kitap adı veya numarası söyleyerek açabilirsiniz.`);
     }
   }, [books]);
 
   const openBook = useCallback(
-    (book: BookMetadata) => {
+    (book: BookSearchResult) => {
       navigation.navigate('Reader', {
         bookId: book.id,
         bookTitle: book.title,
         bookAuthor: book.author,
-        startPage: book.lastPage,
       });
     },
     [navigation]
@@ -79,8 +61,13 @@ export default function LibraryScreen() {
           return;
         }
 
+        if (response.action === 'go_library') {
+          await speak('Zaten kütüphane ekranındasınız.');
+          return;
+        }
+
         if (response.action === 'open_book' && response.book) {
-          // Kitaplıkta eşleşen kitabı bul (ad)
+          // İsimle eşleştir
           const lower = response.book.toLowerCase();
           const found = books.find((b) => b.title.toLowerCase().includes(lower));
           if (found) {
@@ -88,15 +75,13 @@ export default function LibraryScreen() {
             openBook(found);
             return;
           }
-
-          // Numara ile eşleştir
+          // Numarayla eşleştir
           const num = parseInt(response.book, 10);
           if (!isNaN(num) && num >= 1 && num <= books.length) {
             await speak(`${books[num - 1].title} açılıyor.`);
             openBook(books[num - 1]);
             return;
           }
-
           await speak('Bu isimde bir kitap bulamadım.');
           return;
         }
@@ -114,56 +99,25 @@ export default function LibraryScreen() {
 
   const { isListening, startListening, stopListening } = useSpeech(handleVoiceResult);
 
-  const renderItem = ({ item, index }: { item: BookMetadata; index: number }) => (
-    <TouchableOpacity
-      style={styles.bookItem}
-      onPress={() => openBook(item)}
-      accessibilityLabel={`${index + 1}. kitap: ${item.title}, ${item.author}`}
-      accessibilityHint="Açmak için dokunun"
-      accessibilityRole="button"
-    >
-      <View style={styles.bookInfo}>
+  const renderItem = useCallback(
+    ({ item, index }: { item: BookSearchResult; index: number }) => (
+      <TouchableOpacity
+        style={styles.bookItem}
+        onPress={() => openBook(item)}
+        accessibilityLabel={`${index + 1}. kitap: ${item.title}, ${item.author}`}
+        accessibilityHint="Açmak için dokunun"
+        accessibilityRole="button"
+      >
         <Text style={styles.bookNumber}>{index + 1}.</Text>
         <View style={styles.bookDetails}>
           <Text style={styles.bookTitle} numberOfLines={2}>
             {item.title}
           </Text>
           <Text style={styles.bookAuthor}>{item.author}</Text>
-          <View style={styles.bookMeta}>
-            <Text style={styles.offlineBadge}>✓ Çevrimdışı</Text>
-            <Text style={styles.bookDate}>
-              {new Date(item.downloadedAt).toLocaleDateString('tr-TR')}
-            </Text>
-          </View>
         </View>
-      </View>
-      <TouchableOpacity
-        style={styles.deleteButton}
-        onPress={() => {
-          speak(`${item.title} silinecek, emin misiniz?`).then(() => {
-            Alert.alert(
-              'Kitabı Sil',
-              `${item.title} silinecek, emin misiniz?`,
-              [
-                { text: 'İptal', style: 'cancel', onPress: () => speak('İptal edildi.') },
-                {
-                  text: 'Sil',
-                  style: 'destructive',
-                  onPress: async () => {
-                    await deleteBook(item.id);
-                    announce.bookDeleted(item.title);
-                  },
-                },
-              ]
-            );
-          });
-        }}
-        accessibilityLabel={`${item.title} kitabını sil`}
-        accessibilityRole="button"
-      >
-        <Text style={styles.deleteText}>🗑</Text>
       </TouchableOpacity>
-    </TouchableOpacity>
+    ),
+    [openBook]
   );
 
   return (
@@ -178,15 +132,13 @@ export default function LibraryScreen() {
           <Text style={styles.backText}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle} accessibilityRole="header">
-          Kitaplığım
+          Kütüphane
         </Text>
       </View>
 
       {books.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>
-            Henüz indirilmiş kitap yok.{'\n'}Ana ekrandan kitap adı söyleyin.
-          </Text>
+          <Text style={styles.emptyText}>Kütüphane şu an boş.</Text>
         </View>
       ) : (
         <FlatList
@@ -194,14 +146,14 @@ export default function LibraryScreen() {
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
-          accessibilityLabel="İndirilen kitaplar listesi"
+          accessibilityLabel="Kütüphanedeki kitaplar listesi"
         />
       )}
 
       {thinking && (
         <View style={styles.thinkingBar}>
           <ActivityIndicator size="small" color="#4fc3f7" />
-          <Text style={styles.thinkingText}>Gemini düşünüyor...</Text>
+          <Text style={styles.thinkingText}>Düşünüyor...</Text>
         </View>
       )}
 
@@ -209,7 +161,7 @@ export default function LibraryScreen() {
         onPressIn={startListening}
         onPressOut={stopListening}
         style={[styles.micButton, isListening && styles.micActive]}
-        accessibilityLabel="Sesli komut. Kitap numarası söyleyin."
+        accessibilityLabel="Sesli komut. Kitap adı veya numarası söyleyin."
         accessibilityRole="button"
         disabled={thinking}
       >
@@ -264,11 +216,6 @@ const styles = StyleSheet.create({
     borderColor: '#333',
     minHeight: 80,
     padding: 16,
-  },
-  bookInfo: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 12,
   },
   bookNumber: {
@@ -289,30 +236,6 @@ const styles = StyleSheet.create({
   bookAuthor: {
     color: '#aaa',
     fontSize: 20,
-  },
-  bookMeta: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 4,
-  },
-  offlineBadge: {
-    color: '#4caf50',
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  bookDate: {
-    color: '#666',
-    fontSize: 20,
-  },
-  deleteButton: {
-    width: 80,
-    height: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
-  },
-  deleteText: {
-    fontSize: 32,
   },
   emptyContainer: {
     flex: 1,
