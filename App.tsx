@@ -2,6 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import HomeScreen from './src/screens/HomeScreen';
 import ReaderScreen from './src/screens/ReaderScreen';
@@ -22,21 +23,23 @@ const Stack = createStackNavigator<RootStackParamList>();
 
 export default function App() {
   return (
-    <ErrorBoundary>
-      <NavigationContainer>
-        <StatusBar style="light" backgroundColor="#000" />
-        <Stack.Navigator
-          initialRouteName="Home"
-          screenOptions={{
-            headerShown: false,
-            cardStyle: { backgroundColor: '#000' },
-          }}
-        >
-          <Stack.Screen name="Home" component={HomeScreen} />
-          <Stack.Screen name="Reader" component={ReaderScreen} />
-          <Stack.Screen name="Library" component={LibraryScreen} />
-        </Stack.Navigator>
-      </NavigationContainer>
-    </ErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ErrorBoundary>
+        <NavigationContainer>
+          <StatusBar style="light" backgroundColor="#000" />
+          <Stack.Navigator
+            initialRouteName="Home"
+            screenOptions={{
+              headerShown: false,
+              cardStyle: { backgroundColor: '#000' },
+            }}
+          >
+            <Stack.Screen name="Home" component={HomeScreen} />
+            <Stack.Screen name="Reader" component={ReaderScreen} />
+            <Stack.Screen name="Library" component={LibraryScreen} />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </ErrorBoundary>
+    </GestureHandlerRootView>
   );
 }
