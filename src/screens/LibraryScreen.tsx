@@ -1,38 +1,53 @@
-import React, { useEffect, useCallback, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  Pressable,
-  ActivityIndicator,
-} from 'react-native';
+import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator } from 'react-native';
+import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useSpeech } from '../hooks/useSpeech';
 import { parseLocalIntent } from '../utils/localIntent';
 import { speak } from '../utils/tts';
+import { stepFocus } from '../utils/libraryFocus';
 import { listBundledBooks, bundledSource, BookSearchResult } from '../sources';
 import { RootStackParamList } from '../../App';
 
 type LibraryNavProp = StackNavigationProp<RootStackParamList, 'Library'>;
 
+const SWIPE_THRESHOLD = 20; // px — bu kadar yatay kayma "kaydırma" sayılır
+
 export default function LibraryScreen() {
   const navigation = useNavigation<LibraryNavProp>();
   const books = useMemo(() => listBundledBooks(), []);
   const [thinking, setThinking] = useState(false);
+  const [focusIndex, setFocusIndex] = useState(0);
+  const focusIndexRef = useRef(0); // jest closure'ları güncel değeri okusun
+  const listRef = useRef<FlatList<BookSearchResult>>(null);
+  const talkingRef = useRef(false); // basılı-tut dinleme başladı mı
 
-  // Kütüphane açılışında kitap sayısını bir kez sesli bildir.
-  const announcedRef = React.useRef(false);
+  // Odağı ayarla: ref + state güncelle, öğeyi görünür alana kaydır.
+  const setFocus = useCallback(
+    (i: number) => {
+      focusIndexRef.current = i;
+      setFocusIndex(i);
+      if (books.length > 0) {
+        listRef.current?.scrollToIndex({ index: i, animated: true, viewPosition: 0.5 });
+      }
+    },
+    [books.length]
+  );
+
+  // Açılış anonsu (bir kez): kitap sayısı + kullanım + ilk kitap.
+  const announcedRef = useRef(false);
   useEffect(() => {
     if (announcedRef.current) return;
     announcedRef.current = true;
     if (books.length === 0) {
       speak('Kütüphane şu an boş.');
-    } else {
-      speak(`Kütüphanede ${books.length} kitap var. Kitap adı veya numarası söyleyerek açabilirsiniz.`);
+      return;
     }
+    const first = books[0];
+    speak(
+      `Kütüphanede ${books.length} kitap var. Kaydırarak gezebilir, çift dokunarak açabilirsiniz. İlk kitap: ${first.title}, ${first.author}.`
+    );
   }, [books]);
 
   const openBook = useCallback(
@@ -44,6 +59,33 @@ export default function LibraryScreen() {
       });
     },
     [navigation]
+  );
+
+  // Odaktaki kitabın adını seslendir.
+  const announceFocused = useCallback(
+    (i: number) => {
+      const b = books[i];
+      if (b) speak(`${i + 1}. ${b.title}, ${b.author}`);
+    },
+    [books]
+  );
+
+  // Kaydırma: odağı bir adım taşı; sınırdaysa uyar.
+  const moveFocus = useCallback(
+    (dir: 1 | -1) => {
+      const res = stepFocus(focusIndexRef.current, dir, books.length);
+      if (res.atBoundary === 'start') {
+        speak('Listenin başındasınız.');
+        return;
+      }
+      if (res.atBoundary === 'end') {
+        speak('Listenin sonundasınız.');
+        return;
+      }
+      setFocus(res.index);
+      announceFocused(res.index);
+    },
+    [books.length, setFocus, announceFocused]
   );
 
   const handleVoiceResult = useCallback(
@@ -67,15 +109,13 @@ export default function LibraryScreen() {
         }
 
         if (response.action === 'open_book' && response.book) {
-          // İsim/takma ad ile eşleştir (Türkçe-duyarlı normalize, bundled kaynağı).
-          // STT "istiklal marsi" dese bile "İstiklâl Marşı" eşleşir.
+          // İsim/takma ad ile Türkçe-duyarlı eşleşme.
           const matches = await bundledSource.search(response.book);
           if (matches.length > 0) {
             await speak(`${matches[0].title} açılıyor.`);
             openBook(matches[0]);
             return;
           }
-          // Numarayla eşleştir
           const num = parseInt(response.book, 10);
           if (!isNaN(num) && num >= 1 && num <= books.length) {
             await speak(`${books[num - 1].title} açılıyor.`);
@@ -97,79 +137,112 @@ export default function LibraryScreen() {
     [books, openBook, navigation]
   );
 
-  const { isListening, startListening, stopListening } = useSpeech(handleVoiceResult);
+  const { startListening, stopListening } = useSpeech(handleVoiceResult);
+
+  // Tüm ekranı kaplayan birleşik jest: kaydırma / çift dokunma / basılı tut.
+  // Reanimated kurulu olmadığından bu geri çağrılar JS thread'inde çalışır;
+  // setState/speak doğrudan çağrılabilir.
+  const gesture = useMemo(() => {
+    const pan = Gesture.Pan()
+      .activeOffsetX([-SWIPE_THRESHOLD, SWIPE_THRESHOLD])
+      .onEnd((e) => {
+        if (e.translationX >= SWIPE_THRESHOLD) moveFocus(1); // sağa → sonraki
+        else if (e.translationX <= -SWIPE_THRESHOLD) moveFocus(-1); // sola → önceki
+      });
+
+    const doubleTap = Gesture.Tap()
+      .numberOfTaps(2)
+      .onEnd(() => {
+        const b = books[focusIndexRef.current];
+        if (b) openBook(b);
+      });
+
+    const longPress = Gesture.LongPress()
+      .minDuration(400)
+      .onStart(() => {
+        talkingRef.current = true;
+        startListening();
+      })
+      .onFinalize(() => {
+        if (talkingRef.current) {
+          talkingRef.current = false;
+          stopListening();
+        }
+      });
+
+    return Gesture.Race(pan, doubleTap, longPress);
+  }, [moveFocus, openBook, books, startListening, stopListening]);
 
   const renderItem = useCallback(
-    ({ item, index }: { item: BookSearchResult; index: number }) => (
-      <TouchableOpacity
-        style={styles.bookItem}
-        onPress={() => openBook(item)}
-        accessibilityLabel={`${index + 1}. kitap: ${item.title}, ${item.author}`}
-        accessibilityHint="Açmak için dokunun"
-        accessibilityRole="button"
-      >
-        <Text style={styles.bookNumber}>{index + 1}.</Text>
-        <View style={styles.bookDetails}>
-          <Text style={styles.bookTitle} numberOfLines={2}>
-            {item.title}
-          </Text>
-          <Text style={styles.bookAuthor}>{item.author}</Text>
+    ({ item, index }: { item: BookSearchResult; index: number }) => {
+      const focused = index === focusIndex;
+      return (
+        <View
+          style={[styles.bookItem, focused && styles.bookItemFocused]}
+          accessibilityLabel={`${index + 1}. kitap: ${item.title}, ${item.author}`}
+          accessibilityRole="text"
+        >
+          <Text style={styles.bookNumber}>{index + 1}.</Text>
+          <View style={styles.bookDetails}>
+            <Text style={styles.bookTitle} numberOfLines={2}>
+              {item.title}
+            </Text>
+            <Text style={styles.bookAuthor}>{item.author}</Text>
+          </View>
         </View>
-      </TouchableOpacity>
-    ),
-    [openBook]
+      );
+    },
+    [focusIndex]
   );
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-          accessibilityLabel="Geri dön"
-          accessibilityRole="button"
-        >
-          <Text style={styles.backText}>←</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle} accessibilityRole="header">
-          Kütüphane
-        </Text>
+    <GestureDetector gesture={gesture}>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle} accessibilityRole="header">
+            Kütüphane
+          </Text>
+        </View>
+
+        {books.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>Kütüphane şu an boş.</Text>
+          </View>
+        ) : (
+          <FlatList
+            ref={listRef}
+            data={books}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            scrollEnabled={false}
+            contentContainerStyle={styles.listContent}
+            accessibilityLabel="Kütüphanedeki kitaplar listesi"
+            onScrollToIndexFailed={(info) => {
+              setTimeout(() => {
+                listRef.current?.scrollToIndex({
+                  index: info.index,
+                  animated: true,
+                  viewPosition: 0.5,
+                });
+              }, 300);
+            }}
+          />
+        )}
+
+        {thinking && (
+          <View style={styles.thinkingBar}>
+            <ActivityIndicator size="small" color="#4fc3f7" />
+            <Text style={styles.thinkingText}>Düşünüyor...</Text>
+          </View>
+        )}
+
+        <View style={styles.hintBar}>
+          <Text style={styles.hintText}>
+            Kaydır: gez · Çift dokun: aç · Basılı tut: konuş
+          </Text>
+        </View>
       </View>
-
-      {books.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Kütüphane şu an boş.</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={books}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
-          accessibilityLabel="Kütüphanedeki kitaplar listesi"
-        />
-      )}
-
-      {thinking && (
-        <View style={styles.thinkingBar}>
-          <ActivityIndicator size="small" color="#4fc3f7" />
-          <Text style={styles.thinkingText}>Düşünüyor...</Text>
-        </View>
-      )}
-
-      <Pressable
-        onPressIn={startListening}
-        onPressOut={stopListening}
-        style={[styles.micButton, isListening && styles.micActive]}
-        accessibilityLabel="Sesli komut. Kitap adı veya numarası söyleyin."
-        accessibilityRole="button"
-        disabled={thinking}
-      >
-        <Text style={styles.micText}>
-          {isListening ? '🎙 Dinleniyor...' : thinking ? '🤔 Düşünüyor...' : '🎤 Sesle Kitap Seç'}
-        </Text>
-      </Pressable>
-    </View>
+    </GestureDetector>
   );
 }
 
@@ -187,21 +260,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#333',
   },
-  backButton: {
-    width: 80,
-    height: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backText: {
-    color: '#fff',
-    fontSize: 36,
-  },
   headerTitle: {
     color: '#fff',
     fontSize: 28,
     fontWeight: 'bold',
-    marginLeft: 8,
   },
   listContent: {
     padding: 16,
@@ -217,6 +279,10 @@ const styles = StyleSheet.create({
     minHeight: 80,
     padding: 16,
     gap: 12,
+  },
+  bookItemFocused: {
+    borderColor: '#4fc3f7',
+    backgroundColor: '#0a2230',
   },
   bookNumber: {
     color: '#888',
@@ -261,23 +327,16 @@ const styles = StyleSheet.create({
     color: '#4fc3f7',
     fontSize: 20,
   },
-  micButton: {
-    margin: 16,
-    height: 80,
-    backgroundColor: '#111',
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: '#555',
+  hintBar: {
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#333',
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  micActive: {
-    borderColor: '#f00',
-    backgroundColor: '#1a0000',
-  },
-  micText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '600',
+  hintText: {
+    color: '#888',
+    fontSize: 16,
+    textAlign: 'center',
   },
 });
