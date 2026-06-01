@@ -10,8 +10,12 @@ import { GeminiResponse } from './geminiService';
 /** Türkçe harfleri ASCII'ye indirir, noktalama temizler, boşlukları sadeleştirir. */
 function norm(s: string): string {
   return s
+    // Türkçe büyük harfleri toLowerCase'den ÖNCE ASCII'ye indir. Aksi halde
+    // "İ".toLowerCase() => 'i' + U+0307 (birleşik nokta) üretir; bu nokta sonra
+    // boşluğa dönüp "İngilizce" → "i ngilizce" gibi kelimeyi BÖLER (komut kaçar).
+    .replace(/İ/g, 'I').replace(/ı/g, 'i')
     .toLowerCase()
-    .replace(/ı/g, 'i').replace(/İ/g, 'i')
+    .replace(/̇/g, '') // kalan birleşik nokta varsa temizle
     .replace(/ş/g, 's').replace(/ğ/g, 'g').replace(/ç/g, 'c')
     .replace(/ö/g, 'o').replace(/ü/g, 'u')
     .replace(/â/g, 'a').replace(/î/g, 'i').replace(/û/g, 'u')
@@ -124,12 +128,15 @@ export function parseLocalIntent(input: string): GeminiResponse {
     return { action: 'help', speech: 'Komutları okuyorum.' };
   }
 
-  // 12) Kitaplık / ana ekran
+  // 12) Ana ekrana dönüş — çıkış ifadeleri ("kütüphaneden çık") "kütüphane"
+  //     kelimesi içerse bile go_library DEĞİL go_home olmalı; bu yüzden kontrol
+  //     kütüphane kuralından ÖNCE gelir. "kütüphaneye git" ise cik/cikis içermez.
+  if (/\b(cik|cikis|ana ekran|ana sayfa|don|kapat)\b/.test(t)) {
+    return { action: 'go_home', speech: 'Ana ekrana dönüyorum.' };
+  }
+  // 13) Kitaplığa git
   if (/(kitapli|kutuphane)/.test(t)) {
     return { action: 'go_library', speech: 'Kitaplığa gidiyorum.' };
-  }
-  if (/\b(ana ekran|ana sayfa|cikis|kapat)\b/.test(t)) {
-    return { action: 'go_home', speech: 'Ana ekrana dönüyorum.' };
   }
 
   // 13) Kitap açma — "X aç/oku/dinle/bul" veya "aç/oku X"

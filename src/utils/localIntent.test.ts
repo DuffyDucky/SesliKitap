@@ -109,3 +109,31 @@ test('false-positive yok: "sayfayı çevir" → set_language DEĞİL', () => {
 test('false-positive yok: "orijinal dil nedir" → set_language DEĞİL', () => {
   assert.notEqual(parseLocalIntent('orijinal dil nedir').action, 'set_language');
 });
+
+test('Türkçe büyük İ: "dili İngilizce yap" → set_language en', () => {
+  const r = parseLocalIntent('dili İngilizce yap');
+  assert.equal(r.action, 'set_language');
+  assert.equal(r.lang, 'en');
+});
+
+test('Türkçe büyük İ: "İngilizce oku" → set_language en', () => {
+  const r = parseLocalIntent('İngilizce oku');
+  assert.equal(r.action, 'set_language');
+  assert.equal(r.lang, 'en');
+});
+
+test('"kütüphaneden çık" → go_home (go_library DEĞİL)', () => {
+  assert.equal(parseLocalIntent('kütüphaneden çık').action, 'go_home');
+});
+
+test('"çıkış" → go_home', () => {
+  assert.equal(parseLocalIntent('çıkış').action, 'go_home');
+});
+
+test('"ana sayfaya dön" → go_home', () => {
+  assert.equal(parseLocalIntent('ana sayfaya dön').action, 'go_home');
+});
+
+test('regresyon: "kütüphaneye git" → hâlâ go_library', () => {
+  assert.equal(parseLocalIntent('kütüphaneye git').action, 'go_library');
+});
