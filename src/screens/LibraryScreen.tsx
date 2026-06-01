@@ -46,7 +46,7 @@ export default function LibraryScreen() {
     }
     const first = books[0];
     speak(
-      `Kütüphanede ${books.length} kitap var. Kaydırarak gezebilir, çift dokunarak açabilirsiniz. İlk kitap: ${first.title}, ${first.author}.`
+      `Kütüphanede ${books.length} kitap var. Kaydırarak gezebilir, çift dokunarak açabilirsiniz. İlk kitap: ${first.title}.`
     );
   }, [books]);
 
@@ -61,11 +61,11 @@ export default function LibraryScreen() {
     [navigation]
   );
 
-  // Odaktaki kitabın adını seslendir.
+  // Odaktaki kitabın yalnızca adını seslendir (sıra numarası / yazar okunmaz).
   const announceFocused = useCallback(
     (i: number) => {
       const b = books[i];
-      if (b) speak(`${i + 1}. ${b.title}, ${b.author}`);
+      if (b) speak(b.title);
     },
     [books]
   );
