@@ -131,7 +131,7 @@ export function parseLocalIntent(input: string): GeminiResponse {
   // 12) Ana ekrana dönüş — çıkış ifadeleri ("kütüphaneden çık") "kütüphane"
   //     kelimesi içerse bile go_library DEĞİL go_home olmalı; bu yüzden kontrol
   //     kütüphane kuralından ÖNCE gelir. "kütüphaneye git" ise cik/cikis içermez.
-  if (/\b(cik|cikis|ana ekran|ana sayfa|don|kapat)\b/.test(t)) {
+  if (/\b(cik|cikis|kapat)\b/.test(t) || /\bana (sayfa|ekran)/.test(t)) {
     return { action: 'go_home', speech: 'Ana ekrana dönüyorum.' };
   }
   // 13) Kitaplığa git

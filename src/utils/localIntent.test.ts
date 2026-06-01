@@ -137,3 +137,9 @@ test('"ana sayfaya dön" → go_home', () => {
 test('regresyon: "kütüphaneye git" → hâlâ go_library', () => {
   assert.equal(parseLocalIntent('kütüphaneye git').action, 'go_library');
 });
+
+test('regresyon: "Don Kişot oku" → open_book (don çıkış komutu DEĞİL)', () => {
+  const r = parseLocalIntent('Don Kişot oku');
+  assert.equal(r.action, 'open_book');
+  assert.equal(r.book, 'Don Kişot');
+});
