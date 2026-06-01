@@ -29,7 +29,8 @@ arka plan işiyle, **blok temelli** ve **Gemini** ile yapılır.
 | Konu | Karar |
 |------|-------|
 | Kapsam | İki yol: (1) curated kitaplar PC'de önceden çevrilip gömülür, (2) aranan kitaplar telefonda çevrilir |
-| Motor (her iki yol) | Gemini (`gemini-2.5-flash-lite`) — Google Translate tamamen kaldırılır |
+| Motor (her iki yol) | **Gemini 3.1 Flash Lite** (kesin) — Google Translate tamamen kaldırılır |
+| Limitler | 15 RPM / 500 RPD → governor: RPM aralık ≥4.5 sn, `RPD_BUDGET = 500` |
 | Kota bitince | "Bekle, yarın devam" — Google Translate'e DÜŞÜLMEZ |
 | Arka plan | Uygulama açıkken çalışır (Expo gerçek-arka-plan kullanılmaz) |
 | Limit yönetimi | Önleyici aralık (governor, ≥4.5 sn) ana mekanizma + 429 geri-çekilme emniyet kemeri |
@@ -80,8 +81,9 @@ sentence)` aynen çalışır.
 
 ### `src/translation/geminiTranslate.ts`
 - `translateBlock(english: string): Promise<string>`
-- Tek bloğu çeviren Gemini `generateContent` çağrısı. `geminiService.ts`'ten
-  ayrı (o niyet/sohbet için). Ortak `GEMINI_API_KEY` / `GEMINI_MODEL` env'ini paylaşır.
+- Tek bloğu çeviren **Gemini 3.1 Flash Lite** `generateContent` çağrısı.
+  `geminiService.ts`'ten ayrı (o niyet/sohbet için). Ortak `GEMINI_API_KEY`
+  env'ini paylaşır; model `EXPO_PUBLIC_GEMINI_MODEL` ile Gemini 3.1 Flash Lite'a ayarlanır.
 - **Çeviri promptu (PAYLAŞILAN GERÇEK — PC script ile birebir aynı):**
   > "Bu İngilizce metni edebî, akıcı Türkçeye çevir. Paragraf yapısını
   > (boş satırları) koru. Sadece çeviriyi yaz; açıklama, başlık veya not ekleme."
@@ -94,7 +96,7 @@ sentence)` aynen çalışır.
 - `record(): Promise<void>` — bellek RPM penceresi + AsyncStorage RPD sayacı.
 - `isExhaustedToday(): Promise<boolean>` — okuyucunun "yarın devam" kararı için.
 - Tarih değişince RPD sayacı sıfırlanır. Sahte saat/sleep enjekte edilebilir (test).
-- `RPD_BUDGET` yapılandırılabilir sabit (varsayılan muhafazakâr; gerçek kotaya göre ayarlanır).
+- `RPD_BUDGET = 500`, RPM aralığı ≥4.5 sn (Gemini 3.1 Flash Lite: 15 RPM / 500 RPD).
 
 ### `src/translation/translationStore.ts`
 - expo-file-system tabanlı (büyük metin AsyncStorage'a değil dosyaya).
