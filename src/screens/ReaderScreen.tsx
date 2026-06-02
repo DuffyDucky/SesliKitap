@@ -48,6 +48,8 @@ export default function ReaderScreen() {
   const lastTap = useRef(0);
   const isPlayingRef = useRef(false);
   const pagesRef = useRef<string[]>([]);
+  const awaitingTranslationRef = useRef(false);
+  const readFromCurrentRef = useRef<() => void>(() => {});
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Global dil ayarını yükle; TTS içerik dilini ve çeviri ihtiyacını belirle.
@@ -238,14 +240,47 @@ export default function ReaderScreen() {
         startSentence = 0;
         saveProgress(bookId, page, 0);
       } else {
-        // Mevcut son sayfanın sonu. (Task 8 burada kota-farkında sınır ekler.)
+        // Çevrilmiş sayfaların sonu.
+        const st = translationJob.getState();
+        const moreBlocks = needsTranslation && st.bookId === bookId && st.doneBlocks < st.totalBlocks;
+        if (!moreBlocks) {
+          isPlayingRef.current = false;
+          setIsPlaying(false);
+          await announce.bookEnded();
+          return;
+        }
+        if (await quotaGovernor.isExhaustedToday()) {
+          isPlayingRef.current = false;
+          setIsPlaying(false);
+          await speak('Günlük çeviri sınırına ulaşıldı. Yarın kaldığım yerden devam ederim.');
+          return;
+        }
+        // Kota var: sıradaki blok birazdan gelecek. Duraklat, yeni sayfa çıkınca
+        // otomatik devam et (aşağıdaki effect tetikler).
+        await speak('Çevriliyor, bir saniye.');
+        awaitingTranslationRef.current = true;
         isPlayingRef.current = false;
         setIsPlaying(false);
-        await announce.bookEnded();
         return;
       }
     }
-  }, [bookId]);
+  }, [bookId, needsTranslation]);
+
+  useEffect(() => { readFromCurrentRef.current = readFromCurrent; }, [readFromCurrent]);
+
+  // Çeviri ilerleyip yeni sayfa çıkınca, kotadan ötürü beklerken bırakıldıysa
+  // sonraki sayfadan otomatik devam et.
+  useEffect(() => {
+    if (awaitingTranslationRef.current && totalPages > currentPageRef.current) {
+      awaitingTranslationRef.current = false;
+      const next = currentPageRef.current + 1;
+      setCurrentPage(next);
+      currentPageRef.current = next;
+      setCurrentSentence(0);
+      currentSentenceRef.current = 0;
+      readFromCurrentRef.current();
+    }
+  }, [totalPages]);
 
   const goToPage = useCallback(
     async (page: number) => {
