@@ -65,6 +65,28 @@ test('yeniden başlatınca yalnız bitmemiş blokları çevirir', async () => {
   assert.equal(Object.keys(await store.getDone('b:3')).length, 3);
 });
 
+test('translateBlock kota (quota) hatası atarsa → paused-quota, error DEĞİL', async () => {
+  const store = memStore();
+  const job = createJob({
+    translateBlock: async () => { throw Object.assign(new Error('429'), { quota: true }); },
+    governor: governor(99), store, splitIntoBlocks: split,
+  });
+  job.start('q:1', 'A\n\nB');
+  await settle(job);
+  assert.equal(job.getState().status, 'paused-quota');
+});
+
+test('translateBlock kota-DIŞI hata atarsa → error', async () => {
+  const store = memStore();
+  const job = createJob({
+    translateBlock: async () => { throw new Error('beklenmedik'); },
+    governor: governor(99), store, splitIntoBlocks: split,
+  });
+  job.start('e:1', 'A\n\nB');
+  await settle(job);
+  assert.equal(job.getState().status, 'error');
+});
+
 test('subscribe her blokta tetiklenir', async () => {
   const store = memStore();
   let n = 0;

@@ -4,11 +4,13 @@
  * Bu dosya node:test ile test edilmez (RN importları içerir).
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Directory, File, Paths, readAsStringAsync } from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 import { createGovernor, RPD_BUDGET, RPM_SPACING_MS } from './quotaGovernor';
 import { createStore, type StoreFs } from './translationStore';
 import { createJob } from './translationJob';
 import { translateBlock } from './geminiTranslate';
+import { googleTranslate } from './googleTranslate';
+import { createResilientTranslate } from './resilientTranslate';
 import { splitIntoBlocks } from './blocks';
 
 export const quotaGovernor = createGovernor({
@@ -29,7 +31,7 @@ const fs: StoreFs = {
     const file = new File(translatedDir(), name);
     if (!file.exists) return null;
     try {
-      return await readAsStringAsync(file.uri);
+      return await file.text();
     } catch {
       return null;
     }
@@ -45,8 +47,14 @@ const fs: StoreFs = {
 
 export const translationStore = createStore(fs);
 
+// Gemini + Google Translate fallback + yer tutucu: tek blok kitabı durdurmaz.
+const resilientTranslate = createResilientTranslate({
+  gemini: translateBlock,
+  google: googleTranslate,
+});
+
 export const translationJob = createJob({
-  translateBlock,
+  translateBlock: resilientTranslate,
   governor: quotaGovernor,
   store: translationStore,
   splitIntoBlocks,

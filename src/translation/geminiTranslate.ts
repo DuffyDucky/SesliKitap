@@ -4,6 +4,7 @@
  * 429 alırsa bir kez (5 sn sonra) yeniden dener — emniyet kemeri.
  */
 import { fetchWithTimeout } from '../utils/fetchWithTimeout';
+import { QuotaError } from './resilientTranslate';
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || 'gemini-flash-lite-latest';
@@ -27,13 +28,22 @@ export async function translateBlock(english: string, retryOn429 = true): Promis
       system_instruction: { parts: [{ text: TRANSLATE_PROMPT }] },
       contents: [{ role: 'user', parts: [{ text: english }] }],
       generationConfig: { temperature: 0, maxOutputTokens: 8192 },
+      safetySettings: [
+        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+      ],
     }),
-  }, 30000);
+  }, 60000);
 
   if (!res.ok) {
-    if (res.status === 429 && retryOn429) {
-      await new Promise((r) => setTimeout(r, 5000));
-      return translateBlock(english, false);
+    if (res.status === 429) {
+      if (retryOn429) {
+        await new Promise((r) => setTimeout(r, 5000));
+        return translateBlock(english, false);
+      }
+      throw new QuotaError('Çeviri hatası: 429');
     }
     throw new Error(`Çeviri hatası: ${res.status}`);
   }

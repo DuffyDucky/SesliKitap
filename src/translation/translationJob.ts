@@ -74,8 +74,11 @@ export function createJob(deps: JobDeps): TranslationJob {
         existing[i] = tr;
         doneCount++;
         set({ doneBlocks: doneCount });
-      } catch {
-        set({ status: 'error' });
+      } catch (e) {
+        // Kota (429) → duraklat, yarın Gemini ile yeniden dene. Diğer her şey
+        // resilient çeviri tarafından yutulur; buraya düşerse gerçek hatadır.
+        if ((e as any)?.quota) set({ status: 'paused-quota' });
+        else set({ status: 'error' });
         return;
       }
     }

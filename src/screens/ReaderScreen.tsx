@@ -162,8 +162,8 @@ export default function ReaderScreen() {
       let t = '';
       let i = 0;
       while (done[i] != null) { t += done[i]; i++; } // bitmiş-önek (contiguous)
-      setTranslatedText(t);
       const st = translationJob.getState();
+      setTranslatedText(t);
       setTranslating(st.status === 'running' && i < st.totalBlocks);
     };
 
