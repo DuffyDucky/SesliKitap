@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from './fetchWithTimeout';
+import { googleTranslate } from '../translation/googleTranslate';
 
 export type IntentAction =
   | 'pause'
@@ -226,4 +227,55 @@ export async function resolveEnglishTitle(query: string): Promise<string> {
   } catch {
     return q;
   }
+}
+
+/**
+ * Bir kitabın İNGİLİZCE başlığını yaygın TÜRKÇE başlığına çevirir (kütüphane +
+ * okuma ekranında göstermek için). resolveEnglishTitle'ın simetriği. Asla
+ * çökmez: Gemini başarısız/boş/kota → Google Translate fallback → o da olmazsa
+ * İngilizce başlığı aynen döndürür.
+ */
+export async function resolveTurkishTitle(englishTitle: string): Promise<string> {
+  const t = englishTitle.trim();
+  if (!t) return englishTitle;
+
+  const clean = (s: string): string =>
+    s.replace(/^["'`]+|["'`]+$/g, '').split('\n')[0].trim();
+
+  if (GEMINI_API_KEY && GEMINI_API_KEY !== 'your_gemini_api_key_here') {
+    const prompt =
+      'Aşağıdaki kitap adının yaygın TÜRKÇE başlığını ver. ' +
+      'Sadece başlığı yaz, başka hiçbir şey ekleme. ' +
+      'Zaten Türkçeyse veya emin değilsen olduğu gibi tekrarla.\n\n' +
+      `Kitap: ${t}`;
+    try {
+      const res = await fetchWithTimeout(GEMINI_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0, maxOutputTokens: 80 },
+        }),
+      }, 15000);
+      if (res.ok) {
+        const data = await res.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (text) {
+          const title = clean(text);
+          if (title.length > 0 && title.length < 120) return title;
+        }
+      }
+    } catch {
+      // Gemini başarısız → GT fallback
+    }
+  }
+
+  // Google Translate fallback (keysiz).
+  try {
+    const gt = (await googleTranslate(t)).trim();
+    if (gt) return gt;
+  } catch {
+    // GT de başarısız → İngilizce
+  }
+  return t;
 }

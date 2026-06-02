@@ -35,3 +35,36 @@ test('resolveEnglishTitle: boş yanıt → fallback', async () => {
   const { resolveEnglishTitle } = await import('./geminiService');
   assert.equal(await resolveEnglishTitle('beyaz diş'), 'beyaz diş');
 });
+
+function mockGeminiTitle(text: string | null, ok = true): void {
+  (globalThis as any).fetch = async () => ({
+    ok,
+    status: ok ? 200 : 500,
+    json: async () => (text == null
+      ? { candidates: [] }
+      : { candidates: [{ content: { parts: [{ text }] } }] }),
+  });
+}
+
+test('resolveTurkishTitle: Gemini Türkçe başlık döndürür', async () => {
+  mockGeminiTitle('Suç ve Ceza');
+  const { resolveTurkishTitle } = await import('./geminiService');
+  assert.equal(await resolveTurkishTitle('Crime and Punishment'), 'Suç ve Ceza');
+});
+
+test('resolveTurkishTitle: tırnak/whitespace temizlenir', async () => {
+  mockGeminiTitle('"Suç ve Ceza"\n');
+  const { resolveTurkishTitle } = await import('./geminiService');
+  assert.equal(await resolveTurkishTitle('Crime and Punishment'), 'Suç ve Ceza');
+});
+
+test('resolveTurkishTitle: Gemini ve GT başarısız → İngilizce başlık döner', async () => {
+  (globalThis as any).fetch = async () => ({ ok: false, status: 500, json: async () => ({}) });
+  const { resolveTurkishTitle } = await import('./geminiService');
+  assert.equal(await resolveTurkishTitle('Crime and Punishment'), 'Crime and Punishment');
+});
+
+test('resolveTurkishTitle: boş girdi aynen döner', async () => {
+  const { resolveTurkishTitle } = await import('./geminiService');
+  assert.equal(await resolveTurkishTitle('   '), '   ');
+});
