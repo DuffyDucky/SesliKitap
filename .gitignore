@@ -40,3 +40,14 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# editor / local tooling
+.vscode/
+.claude/
+
+# python cache
+__pycache__/
+
+# scratch / temp files
+_pg.txt
+_phone_ss.png
