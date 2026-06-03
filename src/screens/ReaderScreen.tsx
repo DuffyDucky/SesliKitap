@@ -19,6 +19,8 @@ import { readAsStringAsync } from 'expo-file-system';
 import { useSpeech } from '../hooks/useSpeech';
 import { parseLocalIntent } from '../utils/localIntent';
 import { RootStackParamList } from '../../App';
+import { libraryStore } from '../store/libraryStoreInstance';
+import { resolveTurkishTitle } from '../utils/geminiService';
 
 type ReaderRouteProp = RouteProp<RootStackParamList, 'Reader'>;
 type ReaderNavProp = StackNavigationProp<RootStackParamList, 'Reader'>;
@@ -31,8 +33,9 @@ function splitIntoSentences(text: string): string[] {
 export default function ReaderScreen() {
   const route = useRoute<ReaderRouteProp>();
   const navigation = useNavigation<ReaderNavProp>();
-  const { bookId, bookTitle } = route.params;
+  const { bookId, bookTitle, bookAuthor } = route.params;
 
+  const [displayTitle, setDisplayTitle] = useState(bookTitle);
   const [pages, setPages] = useState<string[]>([]);
   const [fullText, setFullText] = useState('');
   const [mainStart, setMainStart] = useState(0);
@@ -65,6 +68,31 @@ export default function ReaderScreen() {
     });
     return () => { cancelled = true; };
   }, [bookId]);
+
+  // Gutenberg kitabı açıldığında: kütüphaneye ekle + başlığı Türkçeye çevir.
+  // Başlık bir kez çevrilir; sonraki açılışlarda kayıttan gelir (ekstra istek yok).
+  useEffect(() => {
+    if (!needsTranslation) return;
+    let cancelled = false;
+    (async () => {
+      const entries = await libraryStore.getEntries();
+      const existing = entries.find((e) => e.id === bookId);
+      if (existing) {
+        if (!cancelled) setDisplayTitle(existing.title);
+        return;
+      }
+      const tr = await resolveTurkishTitle(bookTitle);
+      if (cancelled) return;
+      setDisplayTitle(tr);
+      await libraryStore.upsertEntry({
+        id: bookId,
+        title: tr,
+        author: bookAuthor,
+        addedAt: new Date().toISOString(),
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [needsTranslation, bookId, bookTitle, bookAuthor]);
 
   // Kitap metnini yükle
   useEffect(() => {
@@ -446,7 +474,7 @@ export default function ReaderScreen() {
       {/* Üst bilgi: başlık + sayfa + küçük durum (yalnızca görsel) */}
       <View style={styles.header} pointerEvents="none">
         <Text style={styles.bookTitle} numberOfLines={1} accessibilityRole="header">
-          {bookTitle}
+          {displayTitle}
         </Text>
         <Text style={styles.pageInfo} accessibilityLiveRegion="polite">
           {isListening ? '🎙 Dinleniyor' : (isPlaying ? '⏸ Okunuyor' : '▶ Duraklatıldı')} · {currentPage} / {totalPages}
