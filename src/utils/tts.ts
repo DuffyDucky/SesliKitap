@@ -124,6 +124,8 @@ export const announce = {
   bookDeleted: (title: string) => speak(`${title} silindi.`),
   bookLoading: () => speak('Kitap yükleniyor.'),
   bookEnded: () => speak('Kitap sona erdi.'),
+  translating: () =>
+    speak('Çeviri yapılıyor. Tamamlandığında okuma kendiliğinden başlayacak.'),
   progress: (current: number, total: number) => {
     const percent = Math.round((current / total) * 100);
     return speak(`Sayfa ${current}, toplam ${total}, yüzde ${percent}.`);

@@ -52,6 +52,10 @@ export default function ReaderScreen() {
   const isPlayingRef = useRef(false);
   const pagesRef = useRef<string[]>([]);
   const awaitingTranslationRef = useRef(false);
+  // İlk açılışta çeviri beklenirken: anonsu bir kez yap (initAnnounced) ve
+  // ilk sayfa çıkınca okumayı kendiliğinden başlatmak için işaretle (autoStart).
+  const autoStartRef = useRef(false);
+  const initAnnouncedRef = useRef(false);
   const readFromCurrentRef = useRef<() => void>(() => {});
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -202,6 +206,18 @@ export default function ReaderScreen() {
     return () => { unsub(); };
   }, [needsTranslation, fullText, mainStart, includeFrontMatter, bookId]);
 
+  // İlk kez çevrilen kitap: ilk sayfa henüz hazır değilken görme engelli kullanıcıyı
+  // sesli bilgilendir ve çeviri yetişince okumayı kendiliğinden başlatmak üzere işaretle.
+  // Diskte hazır çeviri olan kitaplarda (translating=false, sayfa hazır) tetiklenmez.
+  useEffect(() => {
+    if (loading || !needsTranslation || initAnnouncedRef.current) return;
+    if (translating && totalPages === 0) {
+      initAnnouncedRef.current = true;
+      autoStartRef.current = true;
+      announce.translating();
+    }
+  }, [loading, needsTranslation, translating, totalPages]);
+
   // Güncel konumu ref'te tut (duraklatma/çıkış anında kaydetmek için).
   const currentPageRef = useRef(currentPage);
   const currentSentenceRef = useRef(currentSentence);
@@ -307,6 +323,14 @@ export default function ReaderScreen() {
       currentPageRef.current = next;
       setCurrentSentence(0);
       currentSentenceRef.current = 0;
+      readFromCurrentRef.current();
+    }
+  }, [totalPages]);
+
+  // İlk açılış beklemesinden sonra: ilk çevrilmiş sayfa çıkar çıkmaz okumayı başlat.
+  useEffect(() => {
+    if (autoStartRef.current && totalPages > 0 && !isPlayingRef.current) {
+      autoStartRef.current = false;
       readFromCurrentRef.current();
     }
   }, [totalPages]);
