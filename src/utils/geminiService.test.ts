@@ -68,3 +68,15 @@ test('resolveTurkishTitle: boş girdi aynen döner', async () => {
   const { resolveTurkishTitle } = await import('./geminiService');
   assert.equal(await resolveTurkishTitle('   '), '   ');
 });
+
+test('resolveTurkishTitle: Gemini başarısız → GT fallback döner', async () => {
+  let call = 0;
+  (globalThis as any).fetch = async () => {
+    call++;
+    // 1. çağrı Gemini (başarısız), 2. çağrı Google Translate (başarılı).
+    if (call === 1) return { ok: false, status: 429, json: async () => ({}) };
+    return { ok: true, status: 200, json: async () => [[['Suç ve Ceza', '', null, null]], null, 'en'] };
+  };
+  const { resolveTurkishTitle } = await import('./geminiService');
+  assert.equal(await resolveTurkishTitle('Crime and Punishment'), 'Suç ve Ceza');
+});

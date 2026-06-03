@@ -190,6 +190,11 @@ export async function chat(
   }
 }
 
+/** Gemini başlık yanıtından tırnakları ve yeni satırları temizler. */
+function cleanGeminiTitle(s: string): string {
+  return s.replace(/^["'`]+|["'`]+$/g, '').split('\n')[0].trim();
+}
+
 /**
  * Türkçe (veya herhangi bir dildeki) kitap adını kanonik İNGİLİZCE eser
  * başlığına çevirir — Gutenberg araması için. Intent JSON akışından ve
@@ -222,7 +227,7 @@ export async function resolveEnglishTitle(query: string): Promise<string> {
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     if (!text) return q;
 
-    const title = text.replace(/^["'`]+|["'`]+$/g, '').split('\n')[0].trim();
+    const title = cleanGeminiTitle(text);
     return title.length > 0 && title.length < 120 ? title : q;
   } catch {
     return q;
@@ -239,9 +244,8 @@ export async function resolveTurkishTitle(englishTitle: string): Promise<string>
   const t = englishTitle.trim();
   if (!t) return englishTitle;
 
-  const clean = (s: string): string =>
-    s.replace(/^["'`]+|["'`]+$/g, '').split('\n')[0].trim();
-
+  // Gemini anahtarı yoksa/başarısızsa GT fallback'e düşeriz — resolveEnglishTitle'dan
+  // farklı olarak burada bir Türkçe çeviri alternatifi (Google Translate) mevcut.
   if (GEMINI_API_KEY && GEMINI_API_KEY !== 'your_gemini_api_key_here') {
     const prompt =
       'Aşağıdaki kitap adının yaygın TÜRKÇE başlığını ver. ' +
@@ -261,7 +265,7 @@ export async function resolveTurkishTitle(englishTitle: string): Promise<string>
         const data = await res.json();
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (text) {
-          const title = clean(text);
+          const title = cleanGeminiTitle(text);
           if (title.length > 0 && title.length < 120) return title;
         }
       }
