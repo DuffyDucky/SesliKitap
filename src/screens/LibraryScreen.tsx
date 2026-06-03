@@ -8,6 +8,7 @@ import { parseLocalIntent } from '../utils/localIntent';
 import { speak } from '../utils/tts';
 import { stepFocus } from '../utils/libraryFocus';
 import { listBundledBooks, bundledSource, BookSearchResult } from '../sources';
+import { libraryStore } from '../store/libraryStoreInstance';
 import { RootStackParamList } from '../../App';
 
 type LibraryNavProp = StackNavigationProp<RootStackParamList, 'Library'>;
@@ -16,12 +17,38 @@ const SWIPE_THRESHOLD = 20; // px — bu kadar yatay kayma "kaydırma" sayılır
 
 export default function LibraryScreen() {
   const navigation = useNavigation<LibraryNavProp>();
-  const books = useMemo(() => listBundledBooks(), []);
+  const [books, setBooks] = useState<BookSearchResult[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [focusIndex, setFocusIndex] = useState(0);
   const focusIndexRef = useRef(0); // jest closure'ları güncel değeri okusun
   const listRef = useRef<FlatList<BookSearchResult>>(null);
   const talkingRef = useRef(false); // basılı-tut dinleme başladı mı
+
+  // Kütüphane: kullanıcının açtığı (çevrilen) kitaplar yeni→eski, ardından gömülü.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const entries = await libraryStore.getEntries();
+      const entryResults: BookSearchResult[] = entries
+        .slice()
+        .reverse()
+        .map((e) => {
+          const idx = e.id.indexOf(':');
+          return {
+            id: e.id,
+            title: e.title,
+            author: e.author,
+            source: idx >= 0 ? e.id.slice(0, idx) : 'gutenberg',
+            sourceId: idx >= 0 ? e.id.slice(idx + 1) : e.id,
+          };
+        });
+      if (cancelled) return;
+      setBooks([...entryResults, ...listBundledBooks()]);
+      setLoaded(true);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Odağı ayarla: ref + state güncelle, öğeyi görünür alana kaydır.
   const setFocus = useCallback(
@@ -38,6 +65,7 @@ export default function LibraryScreen() {
   // Açılış anonsu (bir kez): kitap sayısı + kullanım + ilk kitap.
   const announcedRef = useRef(false);
   useEffect(() => {
+    if (!loaded) return;
     if (announcedRef.current) return;
     announcedRef.current = true;
     if (books.length === 0) {
@@ -48,7 +76,7 @@ export default function LibraryScreen() {
     speak(
       `Kütüphanede ${books.length} kitap var. Kaydırarak gezebilir, çift dokunarak açabilirsiniz. İlk kitap: ${first.title}.`
     );
-  }, [books]);
+  }, [books, loaded]);
 
   const openBook = useCallback(
     (book: BookSearchResult) => {
@@ -114,6 +142,16 @@ export default function LibraryScreen() {
           if (matches.length > 0) {
             await speak(`${matches[0].title} açılıyor.`);
             openBook(matches[0]);
+            return;
+          }
+          // Gömülüde yoksa kütüphane kayıtlarında (açılmış kitaplar) eşleştir.
+          const q = response.book.toLowerCase().trim();
+          const libHit = books.find(
+            (b) => b.title.toLowerCase().includes(q) || q.includes(b.title.toLowerCase())
+          );
+          if (libHit) {
+            await speak(`${libHit.title} açılıyor.`);
+            openBook(libHit);
             return;
           }
           const num = parseInt(response.book, 10);
