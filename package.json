@@ -7,7 +7,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "test": "tsx src/utils/frontMatter.test.ts && tsx src/sources/gutenbergText.test.ts && tsx src/utils/localIntent.test.ts && tsx src/utils/geminiService.test.ts && tsx src/books/index.test.ts && tsx src/utils/libraryFocus.test.ts && tsx src/translation/blocks.test.ts && tsx src/translation/geminiTranslate.test.ts && tsx src/translation/quotaGovernor.test.ts && tsx src/translation/translationStore.test.ts && tsx src/translation/translationJob.test.ts && tsx src/translation/googleTranslate.test.ts && tsx src/translation/resilientTranslate.test.ts && tsx src/store/libraryStore.test.ts"
+    "test": "tsx src/utils/frontMatter.test.ts && tsx src/sources/gutenbergText.test.ts && tsx src/utils/localIntent.test.ts && tsx src/utils/geminiService.test.ts && tsx src/books/index.test.ts && tsx src/utils/libraryFocus.test.ts && tsx src/translation/blocks.test.ts && tsx src/translation/geminiTranslate.test.ts && tsx src/translation/quotaGovernor.test.ts && tsx src/translation/translationStore.test.ts && tsx src/translation/translationJob.test.ts && tsx src/translation/googleTranslate.test.ts && tsx src/translation/resilientTranslate.test.ts && tsx src/store/libraryStore.test.ts && tsx src/utils/unwrapLines.test.ts"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

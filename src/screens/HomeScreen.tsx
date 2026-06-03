@@ -126,10 +126,19 @@ export default function HomeScreen() {
     [navigation, searchAndOpenBook]
   );
 
-  const { isListening, startListening, stopListening, transcript } = useSpeech(handleVoiceResult);
+  const { isListening, startListening, stopListening } = useSpeech(handleVoiceResult);
 
+  // Tüm ekran basılı-tut-konuş butonudur: nereye basılı tutulursa dinlemeye başlar.
   return (
-    <View style={styles.container}>
+    <Pressable
+      onPressIn={startListening}
+      onPressOut={stopListening}
+      disabled={thinking}
+      style={[styles.container, isListening && styles.containerActive]}
+      accessibilityLabel="Konuşmak için ekranı basılı tutun."
+      accessibilityHint="Kitap adı söyleyin, soru sorun veya komut verin"
+      accessibilityRole="button"
+    >
       <Text
         style={styles.title}
         accessibilityLabel="Voice Book uygulaması"
@@ -142,53 +151,14 @@ export default function HomeScreen() {
         Sesli Kitap
       </Text>
 
-      {(transcript !== '' || lastResponse !== '') && (
-        <View style={styles.chatArea}>
-          {transcript !== '' && (
-            <Text style={styles.userText} accessibilityLiveRegion="polite">
-              Sen: {transcript}
-            </Text>
-          )}
-          {lastResponse !== '' && !thinking && (
-            <Text style={styles.aiText} accessibilityLiveRegion="polite">
-              Asistan: {lastResponse}
-            </Text>
-          )}
-        </View>
-      )}
-
-      {thinking && (
-        <View style={styles.thinkingContainer}>
-          <ActivityIndicator size="small" color="#fff" />
-          <Text style={styles.thinkingText}>Düşünüyor...</Text>
-        </View>
-      )}
-
-      <Pressable
-        onPressIn={startListening}
-        onPressOut={stopListening}
-        style={({ pressed }) => [styles.micButton, isListening && styles.micActive]}
-        accessibilityLabel="Mikrofon butonu. Basılı tutarak konuşun."
-        accessibilityHint="Kitap adı söyleyin, soru sorun veya komut verin"
-        accessibilityRole="button"
-        disabled={thinking}
-      >
+      <View style={styles.center}>
         <Text style={styles.micIcon}>{isListening ? '🎙' : '🎤'}</Text>
-        <Text style={styles.micText}>
+        <Text style={styles.micText} accessibilityLiveRegion="polite">
           {isListening ? 'Dinleniyor...' : thinking ? 'Düşünüyor...' : 'Basılı Tut ve Konuş'}
         </Text>
-      </Pressable>
-
-      <TouchableOpacity
-        style={styles.libraryButton}
-        onPress={() => { announce.goingToLibrary(); navigation.navigate('Library'); }}
-        accessibilityLabel="Kitaplığım"
-        accessibilityHint="İndirilen kitaplarınızı görmek için dokunun"
-        accessibilityRole="button"
-      >
-        <Text style={styles.libraryButtonText}>Kitaplığım</Text>
-      </TouchableOpacity>
-    </View>
+        {thinking && <ActivityIndicator size="large" color="#fff" style={styles.spinner} />}
+      </View>
+    </Pressable>
   );
 }
 
@@ -197,9 +167,20 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingVertical: 48,
     paddingHorizontal: 24,
+  },
+  containerActive: {
+    backgroundColor: '#1a1a1a',
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  spinner: {
+    marginTop: 16,
   },
   title: {
     color: '#fff',

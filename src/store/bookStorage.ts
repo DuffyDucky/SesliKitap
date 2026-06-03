@@ -67,6 +67,60 @@ export async function updateLastPage(id: string, page: number): Promise<void> {
   });
 }
 
+// --- Okuma ilerlemesi (her kitap için sayfa + cümle) ---------------------
+// BookMetadata yalnızca indirilmiş kitaplarda bulunur; gömülü (bundled:)
+// kitaplarda kayıt olmadığı için ilerleme ayrı, kitap-bağımsız bir haritada
+// tutulur. Böylece her kitap (gömülü dahil) kaldığı yerden devam eder.
+const PROGRESS_KEY = '@seslikitap_progress';
+
+export interface ReadingProgress {
+  page: number;
+  sentence: number;
+}
+
+export async function getProgress(id: string): Promise<ReadingProgress | null> {
+  const data = await AsyncStorage.getItem(PROGRESS_KEY);
+  if (!data) return null;
+  try {
+    const map = JSON.parse(data) as Record<string, ReadingProgress>;
+    return map[id] ?? null;
+  } catch {
+    await AsyncStorage.removeItem(PROGRESS_KEY);
+    return null;
+  }
+}
+
+const pendingProgress = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** İlerlemeyi kaydeder (300ms debounce; cümle başına çağrılabilir). */
+export async function saveProgress(
+  id: string,
+  page: number,
+  sentence: number
+): Promise<void> {
+  const existing = pendingProgress.get(id);
+  if (existing) clearTimeout(existing);
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(async () => {
+      pendingProgress.delete(id);
+      const data = await AsyncStorage.getItem(PROGRESS_KEY);
+      let map: Record<string, ReadingProgress> = {};
+      if (data) {
+        try {
+          map = JSON.parse(data);
+        } catch {
+          map = {};
+        }
+      }
+      map[id] = { page, sentence };
+      await AsyncStorage.setItem(PROGRESS_KEY, JSON.stringify(map));
+      resolve();
+    }, 300);
+    pendingProgress.set(id, timer);
+  });
+}
+
 export async function removeBook(id: string): Promise<void> {
   const books = await getBooks();
   await AsyncStorage.setItem(
