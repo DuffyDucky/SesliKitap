@@ -146,9 +146,11 @@ export default function LibraryScreen() {
           }
           // Gömülüde yoksa kütüphane kayıtlarında (açılmış kitaplar) eşleştir.
           const q = response.book.toLowerCase().trim();
-          const libHit = books.find(
-            (b) => b.title.toLowerCase().includes(q) || q.includes(b.title.toLowerCase())
-          );
+          const libHit = q
+            ? books.find(
+                (b) => b.title.toLowerCase().includes(q) || q.includes(b.title.toLowerCase())
+              )
+            : undefined;
           if (libHit) {
             await speak(`${libHit.title} açılıyor.`);
             openBook(libHit);
