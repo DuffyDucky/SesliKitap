@@ -84,6 +84,7 @@ export default function ReaderScreen() {
       const tr = await resolveTurkishTitle(bookTitle);
       if (cancelled) return;
       setDisplayTitle(tr);
+      if (cancelled) return;
       await libraryStore.upsertEntry({
         id: bookId,
         title: tr,
